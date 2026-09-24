@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101a24">
+<title>The Nocturnal Conservatory</title>
+<style>
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#101a24}body{display:grid;place-items:center}canvas{position:fixed;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:50% 20%;image-rendering:pixelated;image-rendering:crisp-edges}
+@media(max-aspect-ratio:6/5){canvas{object-fit:contain}}
+</style>
+</head>
+<body><canvas id="world" width="864" height="576" role="img" aria-label="A living pixel-art botanical laboratory at midnight. A luminous flower grows in a glass terrarium, candles flicker, and a sleeping cat dreams beneath the stars."></canvas>
+<script>
+'use strict';
+// All geometry is drawn on a small, integer pixel grid. Architecture is cached;
+// only living things, light, and weather are repainted at thirty frames a second.
+const canvas=document.getElementById('world'),screen=canvas.getContext('2d',{alpha:false});
+const W=864,H=576,TAU=Math.PI*2;
+let ctx=screen,seed=81732;
+const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+const pick=a=>a[Math.floor(rand()*a.length)];
+const rect=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h))};
+function ellipse(x,y,rx,ry,c){for(let j=-Math.ceil(ry);j<=ry;j++){const dx=Math.floor(rx*Math.sqrt(Math.max(0,1-j*j/(ry*ry))));rect(x-dx,y+j,dx*2+1,1,c)}}
+function poly(p,c){let low=Math.ceil(Math.min(...p.map(v=>v[1]))),high=Math.floor(Math.max(...p.map(v=>v[1])));for(let y=low;y<=high;y++){let hits=[];for(let i=0;i<p.length;i++){let a=p[i],b=p[(i+1)%p.length];if((a[1]<=y&&b[1]>y)||(b[1]<=y&&a[1]>y))hits.push(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]))}hits.sort((a,b)=>a-b);for(let i=0;i+1<hits.length;i+=2)rect(Math.ceil(hits[i]),y,Math.floor(hits[i+1])-Math.ceil(hits[i])+1,1,c)}}
+function line(x,y,X,Y,c,w=1){let n=Math.max(Math.abs(X-x),Math.abs(Y-y));for(let i=0;i<=n;i++)rect(x+(X-x)*i/(n||1),y+(Y-y)*i/(n||1),w,w,c)}
+function glow(x,y,r,color,alpha=1){ctx.save();ctx.globalCompositeOperation='screen';for(let i=9;i>0;i--){ctx.globalAlpha=alpha*.022;ellipse(x,y,r*i/9,r*i/9,color)}ctx.restore()}
+function star(x,y,c='#d9ecc2',s=2){rect(x-s,y,s*2+1,1,c);rect(x,y-s,1,s*2+1,c);rect(x,y,1,1,'#fff6da')}
+function leaf(x,y,angle,size,c,lit){let dx=Math.cos(angle)*size,dy=Math.sin(angle)*size,nx=-dy*.31,ny=dx*.31;poly([[x,y],[x+dx*.42+nx,y+dy*.42+ny],[x+dx,y+dy],[x+dx*.4-nx,y+dy*.4-ny]],c);if(lit)line(x,y,x+dx*.82,y+dy*.82,lit)}
+function plant(x,y,size,t=0,shade=0){for(let b=0;b<5;b++){let a=-Math.PI/2+(b-2)*.28,len=size*(.72+(b%3)*.13),tipX=x+Math.cos(a)*len+Math.sin(t*.8+b)*2,tipY=y+Math.sin(a)*len;line(x,y,tipX,tipY,shade?'#244a42':'#458269',2);for(let j=1;j<5;j++){let u=j/5,bx=x+(tipX-x)*u,by=y+(tipY-y)*u;leaf(bx,by,a-.85,len*.27*(1-u*.5),shade?'#173b35':'#2f6956',shade?'#285348':'#599d73');leaf(bx,by,a+.85,len*.23*(1-u*.4),shade?'#204b41':'#43866a',shade?'#2e6252':'#72aa79')}}}
+function pot(x,y,w,h,c='#8d5445'){poly([[x-w/2,y-h],[x+w/2,y-h],[x+w*.37,y],[x-w*.37,y]],'#2b2a31');poly([[x-w/2+2,y-h+2],[x+w/2-2,y-h+2],[x+w*.33,y-2],[x-w*.33,y-2]],c);rect(x-w/2-2,y-h-3,w+4,5,'#b97554');rect(x-w*.28,y-h+3,3,h-8,'#cb9764');ellipse(x,y-h-3,w*.45,2,'#302d31')}
+function book(x,y,w,h,c){rect(x,y,w,h,'#171e26');rect(x+1,y+1,w-2,h-2,c);rect(x+2,y+3,w-4,2,'#c79961');rect(x+2,y+h-5,w-4,2,'#c79961');rect(x+2,y+7,1,h-15,'#ffffff16');if(w>10)rect(x+w/2-1,y+h*.43,2,6,'#cda76f')}
+function stack(x,y,w,n){for(let i=0;i<n;i++){let dx=(i%2)*4;rect(x+dx,y-i*9,w,8,pick(['#614452','#41545a','#986347']));rect(x+dx+4,y-i*9+2,w-9,4,'#c6b386');rect(x+dx+8,y-i*9+3,w-19,1,'#8c826a')}}
+const bottles=[];
+function bottle(x,y,w,h,color,type=0,animate=true){let body=y-h*.68;poly([[x-w*.2,y-h],[x+w*.2,y-h],[x+w*.2,body-4],[x+w*.48,body+2],[x+w*.48,y-2],[x+w*.32,y],[x-w*.32,y],[x-w*.48,y-2],[x-w*.48,body+2],[x-w*.2,body-4]],'#29424d');poly([[x-w*.38,y-h*.48],[x+w*.38,y-h*.48],[x+w*.38,y-3],[x-w*.38,y-3]],color);ellipse(x,y-h*.48,w*.37,2,'#a1dbc088');line(x-w*.32,body+5,x-w*.32,y-5,'#9ed6cc',1);rect(x-w*.16,y-h+3,1,6,'#9fb9a8');rect(x-w*.25,y-h-3,w*.5,5,type?'#aa8c61':'#926744');rect(x+w*.23,body+5,2,4,'#e6eee38c');if(w>17){rect(x-w*.25,y-h*.34,w*.5,8,'#c9b889');rect(x-2,y-h*.34+2,4,3,'#74645a')}if(animate)bottles.push({x,y,w,h,color,phase:rand()*10})}
+function mushroom(x,y,s,c){rect(x-2,y-s*.7,4,s*.7,'#b7c6a0');ellipse(x,y-s*.7,s,s*.43,'#283d43');ellipse(x,y-s*.8,s,s*.45,c);rect(x-s*.5,y-s,3,2,'#d8ebbb');rect(x+s*.35,y-s*.87,2,2,'#d8ebbb')}
+function shelf(x,y,w){rect(x-2,y+5,w+5,10,'#0f2028');rect(x,y,w,7,'#8d6549');rect(x,y,w,2,'#c09565');rect(x+5,y+7,w-10,3,'#4b3935');poly([[x+10,y+7],[x+10,y+27],[x+28,y+7]],'#5e4a3c');poly([[x+w-10,y+7],[x+w-10,y+27],[x+w-28,y+7]],'#5e4a3c')}
+function arch(x,y,w,h,c){ellipse(x+w/2,y+w/2,w/2,w/2,c);rect(x,y+w/2,w,h-w/2,c)}
+const bg=document.createElement('canvas');bg.width=W;bg.height=H;ctx=bg.getContext('2d');
+rect(0,0,W,H,'#15252d');
+// Quiet irregular stonework, with warm mortar caught by candlelight.
+for(let row=0;row<12;row++){let y=row*33;for(let col=-1;col<17;col++){let x=col*57+(row%2)*29;rect(x+1,y+1,55,30,pick(['#223337','#243538','#293839','#283439','#1e3035']));rect(x+3,y+2,50,1,'#41504a36');for(let k=0;k<9;k++)rect(x+rand()*51,y+rand()*28,1+rand()*3,1,'#8394780d')}}
+// Roof beams and carved supports.
+poly([[0,0],[864,0],[864,28],[470,18],[0,53]],'#122328');
+for(let x of [40,237,613,810]){rect(x,0,15,390,'#15282b');rect(x+2,0,3,389,'#4b4c3b');rect(x+6,0,7,389,'#303b32');for(let y=30;y<375;y+=35)line(x+8,y,x+10,y+22,'#59604438')}
+line(37,52,279,0,'#536049',6);line(829,43,594,0,'#536049',6);
+arch(262,28,334,303,'#101e28');arch(268,33,322,293,'#697363');arch(275,40,308,279,'#263d46');arch(282,46,294,267,'#13273d');
+// The view beyond the arched window.
+ctx.save();ctx.beginPath();ctx.moveTo(282,313);ctx.lineTo(282,193);ctx.arc(429,193,147,Math.PI,TAU);ctx.lineTo(576,313);ctx.closePath();ctx.clip();
+for(let y=44;y<314;y++)rect(281,y,296,1,y<134?'#14293e':y<195?'#1b3849':y<250?'#244651':'#2d5558');
+for(let i=0;i<90;i++){let x=282+rand()*294,y=49+rand()*190;rect(x,y,1,1,pick(['#718a94','#9eacaa','#c9ccb3']))}
+glow(474,105,49,'#99bdc3',.5);ellipse(474,105,20,20,'#dbdfb2');ellipse(482,98,17,17,'#172c41');rect(462,113,3,2,'#a7c5b0');
+poly([[280,232],[314,203],[341,217],[382,172],[432,224],[474,195],[520,215],[578,182],[578,314],[280,314]],'#284953');
+poly([[280,257],[327,228],[373,258],[429,224],[479,252],[534,216],[578,237],[578,314],[280,314]],'#315a5c');
+for(let i=0;i<36;i++){let x=280+i*9,y=226+rand()*56;rect(x,y,2,92,'#183d44');for(let j=0;j<5;j++)poly([[x,y+j*9-15],[x-7-j*2,y+j*11+8],[x+8+j*2,y+j*11+8]],i%2?'#1a4149':'#1c484d')}
+rect(282,295,294,18,'#456e69');for(let i=0;i<70;i++)rect(283+rand()*288,298+rand()*16,2+rand()*13,1,pick(['#577e71','#6b9580','#315953']));
+poly([[512,277],[527,264],[543,278]],'#122e37');rect(516,278,24,20,'#193c40');rect(521,280,4,6,'#e6ba75');rect(532,280,4,6,'#dca665');
+ctx.restore();
+// Window mullions and pale moonlit edges.
+rect(424,46,9,270,'#233c3f');rect(424,46,2,270,'#869a7d');rect(281,185,295,8,'#223b3f');rect(283,185,290,2,'#7c9681');rect(344,73,6,242,'#284249');rect(346,73,1,241,'#819b86');rect(511,74,6,239,'#284249');rect(511,74,1,239,'#8d9e82');
+shelf(261,315,336);rect(275,326,310,9,'#3c4942');
+// Left recessed cabinet.
+rect(56,89,184,231,'#111f28');rect(62,96,172,215,'#263230');rect(64,98,168,208,'#26352f');
+for(let x of [58,234]){rect(x,87,7,233,'#65523c');rect(x,88,2,230,'#ad8152')}
+for(let y of [158,223,305])shelf(55,y,187);
+let bx=72;for(let i=0;i<10;i++){let w=8+Math.floor(rand()*9),h=24+rand()*27;book(bx,157-h,w,h,pick(['#805752','#5d6c55','#4b6266','#aa7958','#695a6a']));bx+=w+2}
+bottle(79,221,18,43,'#6f9871');bottle(104,221,15,36,'#bd875f');bottle(130,221,25,48,'#538f89');bottle(162,221,16,32,'#927491');bottle(190,221,28,52,'#92a374');bottle(221,221,11,31,'#cb9c58');
+stack(70,298,48,3);bottle(140,303,21,42,'#a76c7e');bottle(176,303,29,60,'#619e8b');bottle(211,303,16,34,'#d3a966');
+// Botanical herbarium on the wall.
+rect(73,40,71,40,'#102129');rect(76,42,66,35,'#947957');rect(79,45,60,29,'#c3b283');line(108,69,108,49,'#62745b');for(let j=0;j<3;j++){leaf(108,66-j*5,-2.6,10,'#677b5b');leaf(108,64-j*5,-.6,10,'#78815c')}rect(94,71,26,1,'#958263');
+// Right shelves, curios, porcelain and books.
+rect(621,79,187,243,'#192a2e');for(let y of [132,213,310])shelf(618,y,190);
+for(let i=0;i<7;i++)book(633+i*12,90+(i%3)*4,10,42-(i%3)*4,pick(['#826050','#526966','#8c7660','#695c70']));
+ellipse(759,118,19,14,'#a6b295');rect(744,103,30,9,'#b9c2a1');ellipse(759,103,15,3,'#506d68');rect(750,98,18,5,'#8d9d88');rect(756,95,6,4,'#b0b99a');rect(753,111,13,9,'#526e6b');rect(758,112,2,7,'#8db39b');
+bottle(638,211,17,46,'#799d64');bottle(664,211,20,35,'#c58a6c');bottle(696,211,22,52,'#9771a1');bottle(727,211,15,37,'#5c9c94');
+rect(751,167,41,44,'#8b8060');rect(755,171,33,36,'#2b4849');mushroom(770,202,10,'#b29dbb');rect(759,175,2,20,'#86a7a18c');rect(761,164,20,4,'#b9a574');
+stack(626,302,55,4);book(689,261,17,48,'#8f624e');book(709,257,11,52,'#59786d');bottle(746,308,23,47,'#638582');bottle(782,308,22,63,'#b99455');
+// Hanging dried bundles and a brass celestial mobile.
+line(173,0,173,72,'#9c9267');line(160,73,188,73,'#826b4d',2);for(let i=0;i<8;i++){let x=161+i*4;line(x,72,x+(i-4)*2,107+rand()*13,'#756f46');for(let j=0;j<6;j++)leaf(x+(i-4)*j*.3,81+j*5,1.4+(i%2),7,pick(['#646e45','#8d8b54','#4c694a']))}line(159,77,186,77,'#bc9c63');
+line(570,0,570,55,'#967d59');ellipse(570,57,15,15,'#a28c62');ellipse(570,57,13,13,'#26373b');line(553,57,587,57,'#a28c62');line(570,40,570,73,'#a28c62');
+// Floor, perspective boards, rug and scattered fallen leaves.
+rect(0,384,864,192,'#25322f');poly([[0,385],[864,385],[864,430],[0,447]],'#303c35');
+for(let y=399;y<576;y+=26){rect(0,y,864,1,'#14252a');rect(0,y+2,864,1,'#4c4b37');for(let x=-80;x<940;x+=114){let X=x+((y/26)%3)*39;line(X,y,X+10,y+26,'#15262a');for(let k=0;k<7;k++)rect(X+rand()*99,y+4+rand()*20,6+rand()*25,1,'#72705216')}}
+poly([[285,429],[589,429],[718,553],[163,553]],'#14282b');poly([[294,433],[581,433],[694,545],[184,545]],'#62524a');poly([[299,439],[576,439],[676,538],[201,538]],'#86634f');poly([[307,444],[568,444],[658,532],[219,532]],'#374a47');
+for(let y=453;y<530;y+=13){let inset=(y-444)*.84;for(let x=315-inset;x<559+inset;x+=23)poly([[x,y],[x+6,y-3],[x+12,y],[x+6,y+3]],'#8a7659')}
+for(let i=0;i<70;i++)rect(190+i*7,546,1,4+rand()*5,'#a28c68');
+// Workbench joinery; broad top, apron, drawers and a lower shelf.
+for(let x of [249,550]){poly([[x,363],[x+17,363],[x+21,469],[x-2,469]],'#2b2c2b');rect(x+2,367,5,96,'#73573f');rect(x+7,373,4,85,'#493c31');rect(x-2,466,24,5,'#151f24')}
+rect(259,411,305,10,'#785d44');rect(263,413,296,2,'#a47c4e');
+stack(296,411,62,3);pot(405,412,32,30,'#5e6b57');bottle(458,411,23,39,'#567f6d',0,false);stack(492,411,42,2);
+rect(228,349,357,48,'#483a30');rect(237,359,161,29,'#76513c');rect(403,359,171,29,'#6b4b38');for(let x of [242,408]){rect(x,362,150,1,'#a87c51');rect(x,382,149,2,'#45352c');ellipse(x+74,373,6,3,'#342f2b');rect(x+72,371,4,2,'#b6935f')}
+poly([[235,331],[575,331],[601,348],[213,348]],'#ac8156');rect(213,348,389,8,'#684935');rect(216,348,382,2,'#d2a36c');rect(225,356,365,3,'#302a29');
+for(let i=0;i<85;i++)rect(235+rand()*333,333+rand()*13,5+rand()*20,1,pick(['#bb946121','#52372c33','#e8b66a33']));
+// Reading table and a soft moss-green cushion for the resident cat.
+rect(628,375,123,10,'#a77a4e');rect(633,385,113,7,'#493c32');for(let x of [637,731]){rect(x,390,9,82,'#4d4235');rect(x+1,392,2,76,'#826746')}
+stack(649,374,69,3);ellipse(691,351,42,8,'#243e3c');ellipse(691,349,40,8,'#58746a');
+// Basin, shelves below and a copper watering can.
+ellipse(148,412,49,9,'#0f2229');poly([[104,376],[184,376],[175,412],[115,412]],'#485c58');ellipse(145,376,42,10,'#7a8c71');ellipse(145,376,36,6,'#234b54');rect(118,383,3,20,'#8c9980');
+rect(90,415,104,8,'#765c42');for(let x of [96,181])rect(x,423,7,36,'#4b4135');
+ellipse(608,443,15,6,'#1a2a2b');rect(594,416,24,24,'#97704b');ellipse(606,416,12,4,'#bf9562');poly([[615,424],[632,413],[638,414],[621,434]],'#ae8859');line(593,419,585,415,'#a58253',3);line(585,415,584,432,'#a58253',3);line(584,432,594,435,'#a58253',3);
+// Scientific instruments, open field notes and garden tools.
+line(300,332,300,286,'#9e8256',2);line(284,294,319,294,'#ae9766',2);ellipse(300,287,3,3,'#d6c591');for(let x of [284,319]){line(x,295,x-8,309,'#6b776a');line(x,295,x+8,309,'#6b776a');ellipse(x,309,9,2,'#bc9d61')}ellipse(300,332,15,3,'#776246');
+poly([[469,331],[484,322],[510,326],[526,322],[551,329],[535,341],[509,339],[482,338]],'#292e2b');poly([[474,330],[486,323],[510,328],[509,337],[483,335]],'#d7c49b');poly([[510,328],[527,324],[547,330],[535,337],[510,337]],'#b7b48b');line(511,328,510,337,'#806e54');for(let i=0;i<4;i++){line(486-i,326+i*2,504-i,329+i*2,'#8c9575');line(516,329+i*2,534-i*2,328+i*2,'#7f896e')}leaf(493,331,-.4,9,'#708063');
+line(553,343,568,333,'#d0b279',2);ellipse(570,332,4,3,'#333b36');ellipse(570,332,2,1,'#9e986f');line(249,342,270,334,'#c2ad86',2);rect(247,340,8,3,'#755743');
+// A few scattered fallen petals.
+for(let i=0;i<35;i++){let x=240+rand()*350,y=395+rand()*115;leaf(x,y,rand()*6,3+rand()*4,pick(['#9c8360','#607453','#476453']))}
+// Small workshop ephemera, all cut from the same limited palette.
+// Pinned botanical sketches and a seed drawer beneath the herbarium.
+rect(193,36,32,37,'#182a2c');poly([[193,36],[222,38],[225,72],[194,70]],'#a99f76');rect(206,37,3,3,'#d5be89');line(209,63,207,45,'#637c5b');leaf(208,54,-2.5,8,'#627d5b');leaf(208,58,-.6,10,'#718264');ellipse(207,45,4,3,'#8d706b');line(198,65,216,66,'#817f60');
+for(let i=0;i<3;i++){rect(618+i*29,45,26,20,'#4b4b38');rect(619+i*29,46,24,1,'#94805b');rect(629+i*29,53,5,3,'#b2a071')}
+// Coils of twine, seed envelopes, a snail, and a single forgotten feather.
+ellipse(738,126,8,4,'#b9a47b');ellipse(738,125,5,2,'#665a45');rect(730,129,22,1,'#b9a47b');
+poly([[202,289],[222,286],[226,302],[205,304]],'#c5af7c');line(204,290,215,296,'#7e805d');line(215,296,221,288,'#7e805d');rect(212,298,6,2,'#7e805d');
+ellipse(222,154,7,3,'#8a9671');ellipse(218,151,5,5,'#b79963');ellipse(218,151,3,3,'#77664e');rect(218,150,2,2,'#c4ab73');line(226,153,228,148,'#a6b18b');
+line(524,344,543,334,'#e0c690');leaf(531,340,-.6,15,'#d2c5a0','#f0d7aa');
+// Irregular wood pores and luminous mineral flecks keep large surfaces tactile.
+for(let i=0;i<410;i++){let x=240+rand()*332,y=361+rand()*24;rect(x,y,1+Math.floor(rand()*3),1,pick(['#d0a06518','#251e251f']))}
+for(let i=0;i<260;i++){let x=57+rand()*180,y=100+rand()*202;rect(x,y,1,1,'#a1a37b0b')}
+// Stationary warm and cool reflected light baked into the room.
+glow(118,276,157,'#c4772b',1.1);glow(737,253,141,'#ac602c',.8);glow(429,218,170,'#347b85',.5);
+// Dithered pools of reflected light on the tabletop and floorboards.
+for(let i=0;i<1000;i++){let x=224+rand()*364,y=331+rand()*17,d=Math.hypot((x-430)*.8,(y-332)*3);if(rand()<Math.max(0,1-d/95))rect(x,y,1,1,pick(['#94c69c32','#93bd9833','#bdd5a530']))}
+ctx.globalAlpha=.045;poly([[346,385],[399,385],[527,482],[436,482]],'#93c1af');poly([[410,386],[460,386],[627,488],[543,488]],'#93c1af');ctx.globalAlpha=1;
+ctx=screen;
+const stars=Array.from({length:19},()=>({x:355+rand()*150,y:95+rand()*82,p:rand()*TAU}));
+const dust=Array.from({length:48},()=>({x:72+rand()*710,y:50+rand()*400,s:.15+rand()*.5,p:rand()*TAU}));
+const fires=[{x:113,y:280},{x:728,y:291},{x:557,y:317}];
+const events={next:8,kind:0,start:-100,duration:7};
+let elapsed=0,last=0;
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+function vines(t){for(let side=0;side<2;side++){let root=side?800:38;for(let b=0;b<4;b++){let x=root+(b-1)*20,y=-12,px=x,py=y;for(let j=0;j<14-b*2;j++){x=root+(b-1)*20+Math.sin(j*.36+b)*17+Math.sin(t*.4+j*.1)*1.5;y=j*11;line(px,py,x,y,'#365f49',2);leaf(x,y,(j%2?2.8:.3)+Math.sin(t*.5+b)*.06,12+(j%3)*3,j%2?'#427a58':'#315f4a','#669368');px=x;py=y}}}}
+function candle(x,y,t,scale=1){let flicker=Math.sin(t*8+x)*.8+Math.sin(t*13)*.5;glow(x,y-8,42+flicker*2,'#ed9e43',1.5);ellipse(x,y+18,12*scale,3,'#362d28');rect(x-2,y+2,4,15,'#a48451');ellipse(x,y+3,9*scale,3,'#ba995f');rect(x-4,y-8,8,11,'#e4c68b');rect(x-3,y-7,2,10,'#fff0b7');rect(x+3,y-5,2,7,'#a79366');rect(x,y-12,1,5,'#3d3b32');poly([[x-3,y-10],[x-4,y-14],[x+flicker,y-23],[x+3,y-15],[x+2,y-10]],'#d98e43');poly([[x-2,y-10],[x+flicker,y-19],[x+2,y-11]],'#ffdb84');rect(x,y-14,1,4,'#fff4c6')}
+function magicFlower(t,burst){let sw=Math.sin(t*.65)*2.3,x=430+sw;glow(430,278,96,'#52c7a3',1.15+burst*.6);ellipse(430,336,62,9,'#172e30');ellipse(430,333,61,8,'#ae9660');ellipse(430,330,57,7,'#3c5650');ellipse(430,327,53,6,'#75a986');ellipse(430,327,48,4,'#294a44');
+// Distinct glass vessel: sparse stepped contour, tinted interior, faceted rim.
+ctx.globalAlpha=.16;ellipse(430,270,67,60,'#82c1b6');ctx.globalAlpha=1;
+for(let a=-2.8;a<-.32;a+=.019){let X=430+Math.cos(a)*67,Y=270+Math.sin(a)*62;rect(X,Y,1,2,'#829e8c')}
+for(let a=.03;a<2.95;a+=.02){let X=430+Math.cos(a)*67,Y=270+Math.sin(a)*60;rect(X,Y,1,1,'#598c80')}
+line(391,218,391,208,'#86a695');line(469,218,469,208,'#789a8d');ellipse(430,208,39,5,'#adbd9d');ellipse(430,208,35,3,'#29484b');rect(403,209,13,1,'#e4e5b7');
+// A luminous stem, paired translucent leaves and a crown of orchid petals.
+line(430,322,x-3,281,'#3d8873',3);line(x-3,281,x+3,245,'#73c8a0',2);
+for(let j=0;j<4;j++){let Y=309-j*15,X=x-2+Math.sin(j)*3;leaf(X,Y,-2.65-j*.06,26+j*2,'#377b68','#83d2a0');leaf(X,Y,-.45+j*.07,27+j*2,'#469a79','#b7dfaa')}
+for(let i=0;i<6;i++){let X=401+i*11,Y=319+Math.sin(i)*2;mushroom(X,Y,4+(i%3),'#72cead')}
+let open=1+Math.sin(t*.31)*.055+burst*.13;glow(x+3,247,62,'#d37cac',1.3+burst);
+const petals=[[-28,-10,-42,-26,-22,-25],[-19,-15,-26,-42,-8,-30],[-5,-20,1,-49,11,-28],[12,-14,31,-41,28,-16],[20,-3,44,-24,34,0],[-24,1,-38,-7,-22,14],[16,5,37,2,22,16]];
+for(let i=0;i<petals.length;i++){let p=petals[i],X=x+3,Y=250;poly([[X,Y+6],[X+p[0]*open,Y+p[1]*open],[X+p[2]*open,Y+p[3]*open],[X+p[4]*open,Y+p[5]*open]],i%2?'#aa6ba0':'#cf87ae');line(X,Y+3,X+p[2]*open,Y+p[3]*open,i%2?'#e2a2be':'#f1b8c7')}
+for(let i=0;i<5;i++)leaf(x+3,254,-Math.PI+i*.63,20,'#df9cbd','#ffe0c9');ellipse(x+3,251,9,5,'#f8c5b6');ellipse(x+3,248,5,3,'#fff0ba');line(x-2,247,x-5,234,'#ffe6b0');line(x+6,246,x+11,234,'#ffe6b0');rect(x-6,232,3,3,'#fff5cb');rect(x+10,232,3,3,'#fff5cb');
+// Glass streaks stay above the specimen.
+line(370,258,369,276,'#b5d4b099',2);line(372,251,372,257,'#d6e6ba',2);rect(375,245,2,4,'#d6e6ba');line(485,283,480,303,'#94c7ab80',2);rect(447,211,12,1,'#c9d8ae');
+for(let i=0;i<14;i++){let a=t*(.17+i*.004)+i*2.4,r=27+(i%4)*11;let X=x+Math.cos(a)*r,Y=266+Math.sin(a*.7+i)*45;ctx.globalAlpha=.3+(Math.sin(t*1.2+i)+1)*.3;rect(X,Y,1,1,'#cfffe0');ctx.globalAlpha=1}
+}
+function cat(t,awake){let y=343+Math.round(Math.sin(t*1.55)*.6);ellipse(696,y,28,12,'#18292e');ellipse(698,y-2,26,12,'#a67759');ellipse(703,y-5,18,9,'#bb8d65');for(let i=0;i<3;i++)poly([[690+i*9,y-13],[694+i*9,y-12],[692+i*9,y-5],[689+i*9,y-5]],'#755746');let hy=y-4-(awake?4:0);ellipse(676,hy,13,11,'#b58a67');poly([[665,hy-5],[665,hy-18],[675,hy-10]],'#b58a67');poly([[677,hy-11],[686,hy-17],[685,hy-3]],'#b58a67');poly([[668,hy-9],[667,hy-14],[672,hy-10]],'#d3a08a');rect(678,hy-6,3,2,'#715646');if(awake){rect(669,hy,3,2,'#cbe6a1');rect(680,hy,3,2,'#cbe6a1');rect(670,hy,1,2,'#243b37');rect(681,hy,1,2,'#243b37')}else{line(668,hy+1,672,hy+2,'#473e38');line(679,hy+2,683,hy+1,'#473e38')}rect(675,hy+4,2,1,'#76514b');line(661,hy+4,669,hy+5,'#d1b38c');line(682,hy+5,690,hy+3,'#d1b38c');ellipse(686,y+6,13,4,'#d1a47c');let tail=Math.sin(t*.7)*2+(Math.sin(t*.19)>.86?Math.sin(t*3)*3:0);for(let i=0;i<25;i++){let a=i*.085;ellipse(714-Math.sin(a)*17,345+Math.cos(a)*8+tail*i/25,4,3,'#987053')}ellipse(698,342+tail,4,3,'#d0a37b')}
+function spirit(t,progress){let x=582+Math.sin(progress*5)*35,y=298-progress*50;glow(x,y,20,'#90e0bd',.65);ctx.globalAlpha=Math.min(1,progress*5,(1-progress)*5);ellipse(x,y,5,7,'#c3ead0');poly([[x-5,y],[x-6,y+10],[x-2,y+6],[x+1,y+10],[x+4,y+5]],'#c3ead0');rect(x-2,y-1,1,2,'#34635e');rect(x+2,y-1,1,2,'#34635e');ctx.globalAlpha=1}
+function draw(t){ctx=screen;ctx.drawImage(bg,0,0);let active=t-events.start<events.duration,p=active?(t-events.start)/events.duration:0,burst=active&&events.kind===0?Math.sin(p*Math.PI)**4:0;
+if(t>events.next){events.kind=Math.floor(Math.random()*5);events.start=t;events.duration=events.kind===3?2:7;events.next=t+14+Math.random()*24}
+for(let s of stars){let a=.22+(Math.sin(t*.8+s.p)+1)*.26;ctx.globalAlpha=a;star(s.x,s.y,'#c3d3b9',1);ctx.globalAlpha=1}
+// Wisps drift through the exterior, behind the dark crossbars.
+ctx.globalAlpha=.09;for(let i=0;i<4;i++){let X=298+((t*1.2+i*67)%250);rect(X,146+i*9,25,2,'#a3bdc0');rect(X+5,144+i*9,16,2,'#a3bdc0')}ctx.globalAlpha=1;
+if(active&&events.kind===3){let X=357+p*135,Y=91+p*54;line(X-18,Y-8,X,Y,'#748f9b');star(X,Y,'#e5eed1',1)}
+vines(t);plant(280,315,42,t);pot(280,325,29,22,'#8d6752');plant(570,311,56,t+2);pot(570,325,31,25,'#69735b');
+plant(66,369,61,t+1);pot(66,396,42,36,'#85604b');plant(790,370,44,t+4);pot(790,397,32,30,'#887957');
+// Hanging lavender and the gently swinging herb basket.
+let sway=Math.sin(t*.55)*2;line(660,0,662+sway,54,'#9e9266');line(660,26,640+sway,59,'#8b845c');line(660,26,681+sway,59,'#8b845c');plant(661+sway,60,31,t+1);ellipse(661+sway,64,24,9,'#806444');for(let i=0;i<8;i++)line(641+sway+i*5,61,646+sway+i*4,70,'#b49460');rect(638+sway,59,47,3,'#b99a62');
+for(let b of bottles){let {x,y,w,h,phase}=b;for(let j=0;j<3;j++){let cycle=(t*.18+j*.32+phase)%1,X=x+Math.sin(t+j+phase)*w*.2,Y=y-4-cycle*h*.42;rect(X,Y,cycle<.3?2:1,1,'#c6e6b7a0')}rect(x-w*.25,y-h*.48+Math.sin(t*2+phase),w*.5,1,'#d6e0a545')}
+for(let f of fires)candle(f.x,f.y,t);
+// Warm brass lantern on a bracket at the left edge.
+line(23,174,111,174,'#202c2a',3);line(27,170,56,191,'#84714c',2);line(93,174,93,210,'#bc945a');glow(93,244,87,'#d99b46',1.2);poly([[80,215],[106,215],[111,261],[75,261]],'#b79253');rect(80,223,26,31,'#765638');rect(84,225,18,28,'#f1c577');rect(88,226,10,27,'#ffe0a1');line(78,218,83,258,'#4b4434',3);line(104,218,101,258,'#4b4434',3);rect(75,258,36,5,'#bd9759');rect(78,263,29,4,'#514937');poly([[76,216],[91,204],[108,216]],'#c59d60');rect(90,203,4,4,'#f1cc81');
+magicFlower(t,burst);
+// A shallow water surface catches moving reflected flecks.
+for(let i=0;i<5;i++){let X=119+((t*3+i*11)%51),Y=374+(i%3)*2;rect(X,Y,4+Math.sin(t+i)*2,1,'#9ecbb16b')}
+cat(t,active&&events.kind===1&&p>.15&&p<.83);
+if(active&&events.kind===1)spirit(t,p);
+if(active&&events.kind===2){glow(696,190,28,'#dca8e9',Math.sin(p*Math.PI));star(696,188,'#f4d6e9',2)}
+if(active&&events.kind===4){for(let i=0;i<18;i++){let X=451+Math.sin(i*2.1+p*3)*p*51,Y=318-p*(30+i*2);glow(X,Y,4,'#88e1ba',.6*(1-p));rect(X,Y,1,1,'#b7f2c6')}}
+// A moth circles the lantern, casting a small moving halo.
+let mx=102+Math.cos(t*.7)*28,my=227+Math.sin(t*1.1)*14;glow(mx,my,8,'#f1d5a0',.25);ellipse(mx-2,my,Math.sin(t*14)>0?3:1,2,'#d6c9a6');ellipse(mx+2,my,Math.sin(t*14)>0?3:1,2,'#d6c9a6');rect(mx,my,1,3,'#827351');
+for(let d of dust){let X=d.x+Math.sin(t*.13+d.p)*13,Y=55+((d.y-t*d.s*3+5000)%400);ctx.globalAlpha=.18+(Math.sin(t*.7+d.p)+1)*.22;rect(X,Y,1,1,d.p>3?'#8cc9b4':'#d8c294');ctx.globalAlpha=1}
+for(let i=0;i<6;i++){let X=309+i*43+Math.sin(t*.6+i*3)*13,Y=278+Math.sin(t*.5+i)*17;if(X>421&&X<435)continue;glow(X,Y,5,'#a7df9e',.3);rect(X,Y,1,1,'#c3e6a5')}
+// Steam unfurls above a forgotten cup.
+ellipse(337,338,9,3,'#222f2d');rect(330,326,13,11,'#adbaa0');ellipse(336,326,7,2,'#e0d4ac');ellipse(336,326,5,1,'#5b6650');ellipse(346,330,4,4,'#afbb9c');ellipse(346,330,2,2,'#36473b');for(let j=0;j<14;j++){let a=(j/14+t*.19)%1;ctx.globalAlpha=(1-a)*.24;rect(336+Math.sin(a*7+t)*3,321-a*24,2,3,'#d6dcca')}ctx.globalAlpha=1;
+// Foreground: dark, oversized leaves give the room a sheltered, intimate depth.
+ctx.drawImage(fg,0,0);
+}
+const fg=document.createElement('canvas');fg.width=W;fg.height=H;ctx=fg.getContext('2d');
+plant(21,550,153,0,1);plant(844,552,167,0,1);pot(28,578,90,75,'#263c36');pot(844,589,104,85,'#213a35');
+for(let i=0;i<5;i++){let x=30+i*26,y=580-i*7;leaf(x,y,-1.9+i*.17,79,'#142f30','#285247')}
+for(let i=0;i<5;i++)leaf(842-i*13,573,-2.3-i*.12,97,'#142e30','#295447');
+// Near corner of a second worktop, with fungi, an old book and seed jars.
+poly([[0,480],[131,486],[192,576],[0,576]],'#302f2a');poly([[0,475],[129,480],[181,562],[0,558]],'#786044');line(1,478,127,483,'#c1935e',2);for(let i=0;i<30;i++)rect(rand()*128,491+rand()*60,8+rand()*22,1,'#a4804c36');
+stack(5,536,64,4);bottle(27,507,25,58,'#4d8272',0,false);bottle(67,516,20,44,'#a47752',0,false);ellipse(115,540,30,8,'#293f36');mushroom(107,538,13,'#7da496');mushroom(126,540,10,'#b78385');mushroom(96,542,7,'#b4a172');glow(109,526,29,'#6b9d82',.3);
+// Subtle perimeter shading stays pixel-aligned.
+for(let i=0;i<22;i++){ctx.globalAlpha=.013;rect(0,0,W,22-i,'#081720');rect(0,H-22+i,W,22-i,'#081720');rect(0,0,22-i,H,'#081720');rect(W-22+i,0,22-i,H,'#081720')}ctx.globalAlpha=1;
+ctx=screen;
+function tick(now){requestAnimationFrame(tick);if(document.hidden){last=now;return}if(now-last<1000/30)return;let dt=Math.min((now-last)/1000,.1);last=now;elapsed+=dt*(reduced.matches?.35:1);draw(elapsed)}
+draw(0);requestAnimationFrame(tick);
+</script></body></html>
