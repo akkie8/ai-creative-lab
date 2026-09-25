@@ -5,3 +5,4 @@ node_modules/
 __pycache__/
 *.mp4
 experiments/vermilion-well/export/enc
+experiments/misregistered/export/enc

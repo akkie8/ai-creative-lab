@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MISREGISTERED</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#ebe5d8}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="MISREGISTERED — a twenty-second loop printed live in three inks. A Swiss poster slips out of register, dissolves into halftone, is stamped, cut and reset until everything aligns: PERFECT IS BORING."></canvas>
+<script>
+(() => {
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════ context
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', {antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance'});
+if (!gl) return;
+cv.addEventListener('webglcontextlost', e => e.preventDefault());
+cv.addEventListener('webglcontextrestored', () => location.reload());
+let P3 = false;
+try {
+  if ('drawingBufferColorSpace' in gl && matchMedia('(color-gamut: p3)').matches) {
+    gl.drawingBufferColorSpace = 'display-p3'; P3 = gl.drawingBufferColorSpace === 'display-p3';
+  }
+} catch (e) {}
+
+// ═══════════════════════════════════════════════════════════════ math
+const PI = Math.PI, TAU = PI * 2, D2R = PI / 180;
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, x) => a + (b - a) * x;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const sm = x => x * x * (3 - 2 * x);
+const fract = x => x - Math.floor(x);
+const hash = n => fract(Math.sin(n * 127.1 + 311.7) * 43758.5453123);
+const E = {
+  lin: x => x,
+  in2: x => x * x, out2: x => 1 - (1 - x) * (1 - x),
+  in3: x => x * x * x, out3: x => 1 - (1 - x) ** 3, io3: x => x < .5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2,
+  in4: x => x ** 4, out4: x => 1 - (1 - x) ** 4, io4: x => x < .5 ? 8 * x ** 4 : 1 - (-2 * x + 2) ** 4 / 2,
+  inX: x => x <= 0 ? 0 : 2 ** (10 * x - 10), outX: x => x >= 1 ? 1 : 1 - 2 ** (-10 * x),
+  ioX: x => x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? 2 ** (20 * x - 10) / 2 : (2 - 2 ** (-20 * x + 10)) / 2,
+  sm: sm, sm2: x => sm(sm(x)),
+  back: x => { const c = 2.2; return 1 + (c + 1) * (x - 1) ** 3 + c * (x - 1) ** 2; },
+  snap: x => 1 - (1 - x) ** 7,
+  // lands with a small damped rebound: a plate hitting its stop
+  hit: x => x >= 1 ? 1 : 1 - Math.exp(-7 * x) * Math.cos(x * 13) * (1 - x),
+  step: x => x >= 1 ? 1 : 0,
+};
+// keyed tracks: [[t, v, ease], ...] — ease shapes the segment arriving at that key
+function track(keys) {
+  return t => {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      const k = keys[i];
+      if (t < k[0]) { const a = keys[i - 1], x = (t - a[0]) / (k[0] - a[0]); return lerp(a[1], k[1], (E[k[2] || 'io3'])(x)); }
+    }
+    return keys[keys.length - 1][1];
+  };
+}
+// damped impulse after time a: 0 at a, rings out
+const ring = (t, a, f = 7, d = 7) => t < a ? 0 : Math.exp(-(t - a) * d) * Math.sin((t - a) * f * TAU);
+const pulse = (t, a, d = 9) => t < a ? 0 : Math.exp(-(t - a) * d);
+
+// 2D affine [a b c d e f]:  x' = a x + c y + e,  y' = b x + d y + f
+const Mx = {
+  mul: (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]],
+  inv: m => { const d = m[0] * m[3] - m[1] * m[2]; return [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d, (m[2] * m[5] - m[3] * m[4]) / d, (m[1] * m[4] - m[0] * m[5]) / d]; },
+  T: (x, y) => [1, 0, 0, 1, x, y],
+  S: (x, y = x) => [x, 0, 0, y, 0, 0],
+  R: a => { const c = Math.cos(a), s = Math.sin(a); return [c, s, -s, c, 0, 0]; },
+  gl: m => [m[0], m[1], 0, m[2], m[3], 0, m[4], m[5], 1],
+};
+const chain = (...ms) => ms.reduce((a, b) => Mx.mul(a, b));
+
+// ═══════════════════════════════════════════════════════════════ type → signed distance atlas
+const FD = '"Helvetica Neue", Helvetica, "Nimbus Sans", "Nimbus Sans L", FreeSans, Arial, "Liberation Sans", sans-serif';
+const FM = '"SF Mono", Menlo, "IBM Plex Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace';
+let ASCII = ''; for (let i = 32; i < 127; i++) ASCII += String.fromCharCode(i);
+const FACES = {
+  D: {css: `bold 224px ${FD}`, px: 224, sp: 30, chars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.%'},
+  S: {css: `500 46px ${FD}`, px: 46, sp: 6, chars: ASCII + '°×Δ±—·→↑−'},
+  M: {css: `46px ${FM}`, px: 46, sp: 6, chars: ASCII + '°×Δ±—·→↑−'},
+};
+const AW = 2048;
+function edt1(g, off, st, n, f, v, z) {
+  v[0] = 0; z[0] = -1e20; z[1] = 1e20;
+  for (let q = 0; q < n; q++) f[q] = g[off + q * st];
+  for (let q = 1, k = 0, s = 0; q < n; q++) {
+    do { const r = v[k]; s = (f[q] - f[r] + q * q - r * r) / (q - r) / 2; } while (s <= z[k] && --k > -1);
+    k++; v[k] = q; z[k] = s; z[k + 1] = 1e20;
+  }
+  for (let q = 0, k = 0; q < n; q++) { while (z[k + 1] < q) k++; const r = v[k]; g[off + q * st] = f[r] + (q - r) * (q - r); }
+}
+function edt(g, w, h, f, v, z) { for (let x = 0; x < w; x++) edt1(g, x, w, h, f, v, z); for (let y = 0; y < h; y++) edt1(g, y * w, 1, w, f, v, z); }
+function buildAtlas() {
+  const mc = document.createElement('canvas').getContext('2d');
+  let x = 0, y = 0, rowH = 0;
+  const cells = [];
+  for (const id in FACES) {
+    const F = FACES[id]; F.g = {}; F.kc = new Map();
+    mc.font = F.css;
+    F.cap = mc.measureText('H').actualBoundingBoxAscent / F.px;
+    F.mw = s => { mc.font = F.css; return mc.measureText(s).width / F.px; };
+    const pad = F.sp + 2;
+    for (const ch of F.chars) {
+      const m = mc.measureText(ch);
+      const L = Math.ceil(m.actualBoundingBoxLeft), R = Math.ceil(m.actualBoundingBoxRight), A = Math.ceil(m.actualBoundingBoxAscent), D = Math.ceil(m.actualBoundingBoxDescent);
+      const w = Math.max(1, L + R) + pad * 2, h = Math.max(1, A + D) + pad * 2;
+      if (x + w > AW) { x = 0; y += rowH + 2; rowH = 0; }
+      cells.push({F, ch, x, y, w, h, ox: x + pad + L, oy: y + pad + A, adv: m.width / F.px, L, R, A, D, pad});
+      x += w + 2; rowH = Math.max(rowH, h);
+    }
+    x = 0; y += rowH + 2; rowH = 0;
+  }
+  const AH = y;
+  const c = document.createElement('canvas'); c.width = AW; c.height = AH;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#fff'; cx.textBaseline = 'alphabetic';
+  for (const k of cells) { cx.font = k.F.css; cx.fillText(k.ch, k.ox, k.oy); }
+  const src = cx.getImageData(0, 0, AW, AH).data, out = new Uint8Array(AW * AH);
+  const mx = 420 * 420, go = new Float64Array(mx), gi = new Float64Array(mx), f = new Float64Array(512), v = new Uint16Array(512), z = new Float64Array(513);
+  for (const k of cells) {
+    const {w, h, F} = k, n = w * h;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const a = src[((k.y + j) * AW + k.x + i) * 4 + 3] / 255, q = j * w + i;
+      if (a >= 1) { go[q] = 0; gi[q] = 1e20; } else if (a <= 0) { go[q] = 1e20; gi[q] = 0; } else { const d = .5 - a; go[q] = d > 0 ? d * d : 0; gi[q] = d < 0 ? d * d : 0; }
+    }
+    edt(go, w, h, f, v, z); edt(gi, w, h, f, v, z);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const q = j * w + i, d = Math.sqrt(go[q]) - Math.sqrt(gi[q]);
+      out[(k.y + j) * AW + k.x + i] = Math.round(255 * clamp(.5 - d / (2 * F.sp)));
+    }
+    const px = F.px;
+    F.g[k.ch] = {
+      u0: k.x / AW, u1: (k.x + w) / AW, vt: k.y / AH, vb: (k.y + h) / AH,
+      x0: (k.x - k.ox) / px, x1: (k.x + w - k.ox) / px, y1: (k.oy - k.y) / px, y0: (k.oy - k.y - h) / px,
+      bl: -k.L / px, br: k.R / px, bt: k.A / px, bb: -k.D / px,
+      adv: k.adv, ds: 2 * F.sp / px,
+    };
+  }
+  return {data: out, w: AW, h: AH};
+}
+function kern(F, a, b) {
+  if (!F.g[a] || !F.g[b]) return 0;
+  const key = a + b; let k = F.kc.get(key);
+  if (k === undefined) { k = F.mw(a + b) - F.g[a].adv - F.g[b].adv; if (Math.abs(k) < 1e-4) k = 0; F.kc.set(key, k); }
+  return k;
+}
+
+// ═══════════════════════════════════════════════════════════════ GL
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(vs, fs) {
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i), nm = a.name.replace(/\[0\]$/, ''); u[nm] = gl.getUniformLocation(p, a.name); }
+  return {p, u};
+}
+
+// plate pass: every mark is an instanced quad written into its plate's channel
+const PLATE_VS = `#version 300 es
+layout(location=0) in vec2 aC;
+layout(location=1) in vec4 iA;
+layout(location=2) in vec4 iB;
+layout(location=3) in vec4 iC;
+layout(location=4) in vec4 iD;
+layout(location=5) in vec4 iE;
+layout(location=6) in vec4 iF;
+layout(location=7) in vec4 iG;
+uniform mat3 uM[3];
+out vec2 vL; out vec2 vS; out vec2 vUV; out float vGr;
+flat out vec4 fB; flat out vec4 fC; flat out vec4 fD; flat out vec4 fE; flat out vec4 fF; flat out vec4 fG;
+void main() {
+  vec2 p = iA.xy + iA.zw * aC.x + iB.xy * aC.y;
+  vec3 c = uM[int(iB.z + .5)] * vec3(p, 1.);
+  gl_Position = vec4(c.xy, 0., 1.);
+  vL = aC * iE.xy; vS = p;
+  vUV = mix(iF.xy, iF.zw, aC * .5 + .5);
+  vGr = dot(aC, iG.zw) * .5 + .5;
+  fB = iB; fC = iC; fD = iD; fE = iE; fF = iF; fG = iG;
+}`;
+const PLATE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uAtlas;
+in vec2 vL; in vec2 vS; in vec2 vUV; in float vGr;
+flat in vec4 fB; flat in vec4 fC; flat in vec4 fD; flat in vec4 fE; flat in vec4 fF; flat in vec4 fG;
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+void main() {
+  int ty = int(fC.x + .5);
+  float d;
+  if (ty == 0) d = (texture(uAtlas, vUV).r - .5) * fE.z;
+  else if (ty == 1) { vec2 q = abs(vL) - fF.xy + fF.z; d = -(length(max(q, 0.)) + min(max(q.x, q.y), 0.) - fF.z); }
+  else { float r = length(vL); d = fF.x - r; if (fF.y > 0.) d = min(d, r - fF.y); }
+  d += fC.w;
+  float w = max(fwidth(d), fC.z);
+  float cov = clamp(d / w + .5, 0., 1.);
+  float v = cov * fC.y * mix(fG.x, fG.y, clamp(vGr, 0., 1.));
+  if (v <= 0. || vS.x < fD.x || vS.y < fD.y || vS.x > fD.z || vS.y > fD.w) discard;
+  int pl = int(fB.z + .5), md = int(fB.w + .5);
+  vec4 ch = vec4(pl == 0 ? v : 0., pl == 1 ? v : 0., pl == 2 ? v : 0., 0.);
+  o0 = md == 1 ? vec4(0.) : ch;
+  o1 = md == 0 ? vec4(0.) : ch;
+}`;
+
+// print pass: each plate is screened, roughened and laid on paper as a translucent ink
+const FULL_VS = `#version 300 es
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
+const PRINT_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uTone, uLine, uNoise;
+uniform vec2 uRes;
+uniform mat3 uS2P[3], uP2S[3], uS2W;
+uniform vec4 uScr[3], uInk[3];
+uniform vec3 uT[3];
+uniform vec3 uPaper;
+uniform float uPx;
+uniform int uP3;
+out vec4 o;
+const float PI = 3.14159265, TAU = 6.2831853;
+vec4 N4(vec2 p) { return texture(uNoise, p * .00390625); }
+float Nw(vec2 p) { return N4(p).r; }
+float Ns(vec2 p) { return N4(p).g; }
+float Nv(vec2 p) { return N4(p).b; }
+float plate(int i, vec2 fc, vec2 uv) {
+  vec4 S = uScr[i], I = uInk[i];
+  vec2 pp = (uS2P[i] * vec3(fc, 1.)).xy;
+  vec2 wv = (N4(pp * 5.3 + float(i) * 57.).gb * 1.6 + N4(pp * 19. + float(i) * 31.).ra * .8 - 1.2) * I.z / uPx / uRes;
+  float tone = textureLod(uTone, uv + wv, 0.)[i];
+  float ln = textureLod(uLine, uv + wv * .6, 0.)[i];
+  float g = I.x;
+  float ca = cos(S.y), sa = sin(S.y);
+  vec2 q = mat2(ca, -sa, sa, ca) * pp / S.x;
+  float cpx = S.x / uPx;
+  float cov = 0.;
+  if (S.w < .999) {
+    // threshold screen: round dots → checkerboard → holes; morphs to a line screen
+    float tg = clamp(tone + g * sin(PI * tone), 0., 1.);
+    float th = mix(.5 - .25 * (cos(TAU * q.x) + cos(TAU * q.y)), .5 - .5 * cos(TAU * q.y), S.z);
+    th = .012 + .976 * th;
+    float e = tg - th;
+    float a = clamp(e / max(fwidth(e), 1e-4) + .5, 0., 1.);
+    a = mix(a, 1., smoothstep(.975, .995, tg)) * smoothstep(.002, .02, tg);
+    cov = mix(tg, a, smoothstep(1.4, 3., cpx)) * (1. - S.w);
+  }
+  if (S.w > .001) {
+    // amplitude screen: every cell prints one round dot sized by the ink it covers
+    vec2 b = floor(q - .5) + .5;
+    float lod = max(log2(cpx) - .3, 0.), fq = uPx / S.x, cb = 0.;
+    for (int k = 0; k < 4; k++) {
+      vec2 cc = b + vec2(float(k & 1), float(k >> 1));
+      vec2 uc = (uP2S[i] * vec3(mat2(ca, sa, -sa, ca) * cc * S.x, 1.)).xy;
+      float tc = textureLod(uTone, uc, lod)[i];
+      float r = sqrt(tc / PI) * (1. + .28 * tc * tc * tc * tc) * (1. + g);
+      cb = max(cb, clamp((r - length(q - cc)) / fq + .5, 0., 1.));
+    }
+    cov += cb * S.w;
+  }
+  return max(cov, ln);
+}
+void main() {
+  vec2 fc = gl_FragCoord.xy, uv = fc / uRes;
+  vec2 w = (uS2W * vec3(fc, 1.)).xy;
+  // paper: short fibres in two directions, tooth, slow cloudiness, the odd fleck
+  vec4 pa = N4(w * vec2(2.4, 7.2) + 3.);
+  vec4 pb = N4(mat2(.5, .866, -.866, .5) * w * vec2(7.2, 2.4) + 91.);
+  vec4 pc = N4(w * .21 + 33.);
+  float tooth = N4(fc * .83 + 7.).r - .5;
+  float fib = smoothstep(.6, .84, pa.g) * .6 + smoothstep(.6, .84, pb.g) * .4;
+  float mot = pc.b + N4(w * .9 + 71.).b - 1.;
+  vec3 col = uPaper * (1. - .024 * fib - .014 * tooth - .03 * mot);
+  col *= 1. - .35 * smoothstep(.93, .97, pa.r) * smoothstep(.62, .72, pc.g);
+  // inks: Beer–Lambert films, thinner where the roller starves and in the paper's valleys
+  float pl = clamp(log2(max(uInk[0].z, .01) / uPx * 2.), 2., 5.);
+  for (int i = 0; i < 3; i++) {
+    if (uScr[i].w < .001 && textureLod(uTone, uv, pl)[i] + textureLod(uLine, uv, pl)[i] <= 0.) continue;
+    float c = plate(i, fc, uv);
+    if (c <= 0.) continue;
+    float fi = float(i);
+    vec4 nd = N4(w * .55 + fi * 19.), nv = N4(w * 4.1 + fi * 83.);
+    float den = uInk[i].y * (1. + .2 * (nd.b - .5)) * (1. - .12 * fib) * (1. - .06 * tooth);
+    den *= 1. - .85 * smoothstep(.91, .96, nv.r) * smoothstep(.5, .66, nd.g);
+    col *= mix(vec3(1.), pow(uT[i], vec3(max(den, 0.))), clamp(c, 0., 1.));
+  }
+  if (uP3 == 0) col = mat3(1.2249, -.0420, -.0197, -.2247, 1.0419, -.0786, 0., 0., 1.0979) * col;
+  col = clamp(col, 0., 1.);
+  o = vec4(mix(col * 12.92, 1.055 * pow(col, vec3(1. / 2.4)) - .055, step(.0031308, col)), 1.);
+}`;
+
+const PL = prog(PLATE_VS, PLATE_FS), PR = prog(FULL_VS, PRINT_FS);
+
+// atlas
+const AT = buildAtlas();
+const atlasTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, atlasTex);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, AT.w, AT.h, 0, gl.RED, gl.UNSIGNED_BYTE, AT.data);
+gl.generateMipmap(gl.TEXTURE_2D);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+// paper & ink noise
+const noiseTex = gl.createTexture();
+{
+  // r, a: white noise · g: soft (≈2 px) · b: very soft (≈6 px), all tileable
+  const S = 256, A = S * S, n = new Uint8Array(A * 4); let s = 0x9e3779b9;
+  const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; };
+  const wn = [0, 1, 2, 3].map(() => { const f = new Float32Array(A); for (let i = 0; i < A; i++) f[i] = rnd(); return f; });
+  const blur = (src, r, passes) => {
+    let a = Float32Array.from(src), b = new Float32Array(A);
+    for (let k = 0; k < passes; k++) for (let dir = 0; dir < 2; dir++) {
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        let acc = 0;
+        for (let d = -r; d <= r; d++) acc += dir ? a[((y + d + S) % S) * S + x] : a[y * S + (x + d + S) % S];
+        b[y * S + x] = acc / (2 * r + 1);
+      }
+      [a, b] = [b, a];
+    }
+    let m = 0, v = 0; for (let i = 0; i < A; i++) m += a[i]; m /= A;
+    for (let i = 0; i < A; i++) v += (a[i] - m) ** 2; v = Math.sqrt(v / A);
+    for (let i = 0; i < A; i++) a[i] = clamp(.5 + (a[i] - m) / v * .17);
+    return a;
+  };
+  const ch = [wn[0], blur(wn[1], 2, 3), blur(wn[2], 5, 3), wn[3]];
+  for (let i = 0; i < A; i++) for (let c = 0; c < 4; c++) n[i * 4 + c] = Math.round(ch[c][i] * 255);
+  gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, n);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+}
+
+// instances
+const IF = 28, MAXI = 12000;
+const ID = new Float32Array(MAXI * IF);
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const ib = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ib);
+gl.bufferData(gl.ARRAY_BUFFER, ID.byteLength, gl.DYNAMIC_DRAW);
+for (let i = 0; i < 7; i++) { gl.enableVertexAttribArray(1 + i); gl.vertexAttribPointer(1 + i, 4, gl.FLOAT, false, IF * 4, i * 16); gl.vertexAttribDivisor(1 + i, 1); }
+gl.bindVertexArray(null);
+
+// plate targets
+let W = 0, H = 0, toneTex = null, lineTex = null, fbo = null, levels = 1;
+function mkTarget(mips) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texStorage2D(gl.TEXTURE_2D, mips, gl.RGBA8, W, H);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mips > 1 ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+let dprScale = 1, FORCE = null; // FORCE: [w, h] for offline rendering (see export/)
+function resize() {
+  const d = Math.min(window.devicePixelRatio || 1, 2) * dprScale;
+  let w = Math.max(2, Math.round(innerWidth * d)), h = Math.max(2, Math.round(innerHeight * d));
+  const cap = 8.4e6; if (w * h > cap) { const k = Math.sqrt(cap / (w * h)); w = Math.round(w * k); h = Math.round(h * k); }
+  if (FORCE) [w, h] = FORCE;
+  if (w === W && h === H) return;
+  W = cv.width = w; H = cv.height = h;
+  if (toneTex) { gl.deleteTexture(toneTex); gl.deleteTexture(lineTex); gl.deleteFramebuffer(fbo); }
+  levels = Math.floor(Math.log2(Math.max(W, H))) + 1;
+  toneTex = mkTarget(levels); lineTex = mkTarget(levels);
+  fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, toneTex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, lineTex, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// ═══════════════════════════════════════════════════════════════ drawing API (sheet units: frame height = 100)
+const K = 1, R = 2, B = 4, KRB = 7;
+const TONE = 0, LINE = 1, KO = 2;
+const NOCLIP = [-1e5, -1e5, 1e5, 1e5];
+let nI = 0, batches = [], curMode = -1, PXS = .1;
+const DEF = {};
+function emit(o, ty, cx, cy, axx, axy, ayx, ayy, lx, ly, ds, f0, f1, f2, f3) {
+  const pm = o.p === undefined ? K : o.p, md = o.m || 0, blend = md === KO ? 1 : 0;
+  const tone = o.tone === undefined ? 1 : o.tone;
+  if (tone <= 0 || !pm) return;
+  const cl = o.clip || NOCLIP, g0 = o.g0 === undefined ? 1 : o.g0, g1 = o.g1 === undefined ? 1 : o.g1, ga = o.ga || 0;
+  for (let p = 0; p < 3; p++) {
+    if (!(pm & (1 << p)) || nI >= MAXI) continue;
+    if (blend !== curMode) { batches.push({blend, start: nI, n: 0}); curMode = blend; }
+    const b = nI * IF;
+    ID[b] = cx; ID[b + 1] = cy; ID[b + 2] = axx; ID[b + 3] = axy;
+    ID[b + 4] = ayx; ID[b + 5] = ayy; ID[b + 6] = p; ID[b + 7] = md;
+    ID[b + 8] = ty; ID[b + 9] = tone; ID[b + 10] = o.soft || 0; ID[b + 11] = o.bold || 0;
+    ID[b + 12] = cl[0]; ID[b + 13] = cl[1]; ID[b + 14] = cl[2]; ID[b + 15] = cl[3];
+    ID[b + 16] = lx; ID[b + 17] = ly; ID[b + 18] = ds; ID[b + 19] = 0;
+    ID[b + 20] = f0; ID[b + 21] = f1; ID[b + 22] = f2; ID[b + 23] = f3;
+    ID[b + 24] = g0; ID[b + 25] = g1; ID[b + 26] = Math.cos(ga); ID[b + 27] = Math.sin(ga);
+    nI++; batches[batches.length - 1].n++;
+  }
+}
+// glyph with its baseline origin at (x, y); em = font size in sheet units
+function glyph(face, ch, x, y, em, o = DEF) {
+  const F = FACES[face], g = F.g[ch];
+  if (!g) return 0;
+  const sx = (o.sx || 1) * em, sy = (o.sy || 1) * em;
+  let px = x + (g.x0 + g.x1) / 2 * sx, py = y + (g.y0 + g.y1) / 2 * sy;
+  const hw = (g.x1 - g.x0) / 2 * sx, hh = (g.y1 - g.y0) / 2 * sy;
+  let axx = hw, axy = 0, ayx = 0, ayy = hh;
+  const rot = o.rot || 0;
+  if (rot) {
+    const c = Math.cos(rot), s = Math.sin(rot);
+    const vx = o.pvx !== undefined ? o.pvx : x + g.adv * sx / 2, vy = o.pvy !== undefined ? o.pvy : y + F.cap * sy / 2;
+    const dx = px - vx, dy = py - vy;
+    px = vx + dx * c - dy * s; py = vy + dx * s + dy * c;
+    axx = hw * c; axy = hw * s; ayx = -hh * s; ayy = hh * c;
+  }
+  emit(o, 0, px, py, axx, axy, ayx, ayy, hw, hh, g.ds * Math.sqrt(Math.abs(sx * sy)), g.u0, g.vb, g.u1, g.vt);
+  return g.adv * sx;
+}
+// layout: per-glyph x offsets (sheet units, from origin) for a string at cap height
+function lay(face, str, cap, tr = 0, sx = 1) {
+  const F = FACES[face], em = cap / F.cap, out = [];
+  let x = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i], g = F.g[ch];
+    if (i > 0) x += (kern(F, str[i - 1], ch) + tr) * em * sx;
+    out.push({ch, x, w: g ? g.adv * em * sx : 0, l: g ? g.bl * em * sx : 0, r: g ? g.br * em * sx : 0});
+    x += g ? g.adv * em * sx : 0;
+  }
+  out.width = x; out.em = em;
+  out.ink = out.length ? out[out.length - 1].x + out[out.length - 1].r - out[0].l : 0;
+  return out;
+}
+function text(face, str, x, y, cap, o = DEF) {
+  const F = FACES[face], L = lay(face, str, cap, o.tr || 0, o.sx || 1), al = o.al || 0;
+  const x0 = x - L.width * al, rot = o.rot || 0;
+  if (!rot) { for (const g of L) glyph(face, g.ch, x0 + g.x, y, L.em, o); return L.width; }
+  const c = Math.cos(rot), s = Math.sin(rot), oo = Object.assign({}, o, {pvx: 0, pvy: 0});
+  for (const g of L) {
+    const dx = x0 + g.x - x;
+    oo.pvx = x + dx * c; oo.pvy = y + dx * s;
+    const gg = F.g[g.ch]; if (!gg) continue;
+    // rotate each glyph about its own origin, then place the origin along the rotated baseline
+    glyph(face, g.ch, oo.pvx, oo.pvy, L.em, oo);
+  }
+  return L.width;
+}
+function box(cx, cy, hw, hh, rot, o = DEF) {
+  const pad = (o.soft || 0) + Math.max(0, o.bold || 0) + PXS * 1.5, lx = hw + pad, ly = hh + pad, c = Math.cos(rot), s = Math.sin(rot);
+  emit(o, 1, cx, cy, lx * c, lx * s, -ly * s, ly * c, lx, ly, 0, hw, hh, o.rad || 0, 0);
+}
+const rect = (x0, y0, x1, y1, o = DEF) => box((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, o);
+function disc(cx, cy, r, o = DEF, inner = -1) {
+  const L = r + (o.soft || 0) + Math.max(0, o.bold || 0) + PXS * 1.5;
+  emit(o, 2, cx, cy, L, 0, 0, L, L, L, 0, r, inner, 0, 0);
+}
+const hoop = (cx, cy, r, w, o = DEF) => disc(cx, cy, r + w / 2, o, r - w / 2);
+function line(x0, y0, x1, y1, w, o = DEF) {
+  const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy);
+  if (l < 1e-6) return;
+  box((x0 + x1) / 2, (y0 + y1) / 2, l / 2, w / 2, Math.atan2(dy, dx), o);
+}
+const LN = {p: KRB, m: LINE};
+function regMark(cx, cy, r, o = LN, w = .11) {
+  hoop(cx, cy, r, w, o); hoop(cx, cy, r * .5, w, o);
+  line(cx - r * 1.45, cy, cx + r * 1.45, cy, w, o); line(cx, cy - r * 1.45, cx, cy + r * 1.45, w, o);
+}
+function micro(str, x, y, cap, o = LN, face = 'S') { return text(face, str, x, y, cap, o); }
+
+// ═══════════════════════════════════════════════════════════════ press state
+const INKS = {
+  // display-p3, gamma encoded
+  paper: [.936, .912, .862],
+  K: [.1, .098, .106],
+  R: [1, .31, .17],
+  B: [.12, .24, .74],
+};
+const lin = c => c.map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+const PAPER = lin(INKS.paper);
+const TRANS = ['K', 'R', 'B'].map(k => lin(INKS[k]).map((v, i) => v / PAPER[i]));
+
+const press = {
+  cam: {x: 0, y: 0, z: 1, r: 0},
+  reg: [0, 1, 2].map(() => ({x: 0, y: 0, r: 0, s: 1, px: 0, py: 0})),
+  scr: [{c: .78, a: 45 * D2R, m: 0, b: 0}, {c: .78, a: 15 * D2R, m: 0, b: 0}, {c: .78, a: 75 * D2R, m: 0, b: 0}],
+  ink: [{g: .06, d: 1, r: .045}, {g: .06, d: 1, r: .05}, {g: .06, d: 1, r: .05}],
+};
+let U = 1, VX = 88.9, VY = 50;
+
+// ═══════════════════════════════════════════════════════════════ score
+const LOOP = 20;
+let IMP = 0, FRAME = 0, TX = 85, TY = 46.5;
+const LZ = Math.log2;
+const S3 = (p, tone = 1, soft = 0, extra) => Object.assign({p, tone, soft}, extra);
+
+// ─────────── layouts (depend only on the trim box)
+let LY = null, LYK = '';
+function layouts() {
+  const key = TX.toFixed(3) + '/' + TY.toFixed(3);
+  if (key === LYK) return LY;
+  LYK = key;
+  const m = 2.6, x0 = -TX + m, tr = -.03, aw = 2 * TX - 2 * m;
+  const inkW = (s, t = tr) => lay('D', s, 1, t).ink;
+  const cap0 = Math.min((2 * TY - 4 * m) / 3, aw * .8 / inkW('TERED'));
+  const b = [TY - m - cap0, TY - 2 * m - 2 * cap0, TY - 3 * m - 3 * cap0];
+  const row = (s, i, cap, t = tr, xx = x0) => {
+    const L = lay('D', s, cap, t), ox = xx - L[0].l;
+    return L.map((g, j) => ({ch: g.ch, x: ox + g.x, y: b[i], em: L.em, w: g.w, r: ox + g.x + g.r, cap, line: i, j}));
+  };
+  const P0 = [row('MIS', 0, cap0), row('REGIS', 1, cap0), row('TERED', 2, cap0)];
+  const L1 = lay('D', '001', cap0, -.02), last = L1[L1.length - 1];
+  const n001 = L1.map(g => ({ch: g.ch, x: TX - m - (last.x + last.r) + g.x, y: b[0], em: L1.em, cap: cap0}));
+  const blk = {x0: Math.min(Math.max(P0[1][4].r, TX - 49), TX - 22), x1: TX + 1, y0: -TY - 1, y1: b[0] - m};
+  const cap1 = Math.min(cap0, aw / inkW('PERFECT'));
+  const P1 = [row('PERFECT', 0, cap1), row('IS', 1, cap1), row('BORING.', 2, cap1)];
+  const q = cap1;
+  const sqB = {x0: TX - m - q, x1: TX - m, y0: b[1], y1: b[1] + q};
+  const sqR = {x0: TX - m - 2 * q, x1: TX - m - q, y0: b[1], y1: b[1] + q};
+  const trF = -.025, capF = aw / inkW('FORM', trF), syF = (2 * TY - 2 * m) / capF;
+  const LF = lay('D', 'FORM', capF, trF), oxF = x0 - LF[0].l;
+  const FORM = LF.map(g => ({ch: g.ch, x: oxF + g.x, y: -TY + m, em: LF.em, w: g.w}));
+  const G = P0[1][2];
+  LY = {m, x0, cap0, cap1, b, P0, n001, blk, P1, sqR, sqB, FORM, capF, syF, yRule: -TY + m + 7.5 * capF * syF / 16,
+    G: [G.x + G.w / 2, G.y + cap0 / 2], MK: [TX + 1.75, 0]};
+  return LY;
+}
+
+// ─────────── the press: registration, camera, screens as functions of t
+const TRK = {
+  rx: track([[0, 0], [1.4, 0], [1.47, .32, 'hit'], [2.15, .32], [2.21, .78, 'hit'], [2.4, .78], [2.45, 1.35, 'hit'], [2.68, 1.35], [2.72, 2.3, 'hit'], [2.86, 2.3], [2.89, 3.6, 'hit'], [2.95, 3.6], [3.17, .45, 'in3'], [3.2, .45], [3.62, 17, 'outX'], [5, 10], [6.35, 1.1], [6.55, 1.1], [6.8, 0, 'hit'],
+    [8.12, 0], [8.14, 1.3, 'outX'], [8.9, .38], [10.3, .38], [10.8, .16], [14.19, .16], [14.2, 0, 'step'], [16.3, 0], [16.34, .36, 'hit'], [18.62, .36], [18.66, .13, 'hit'], [18.84, .13], [18.88, 0, 'hit']]),
+  ry: track([[0, 0], [2.15, 0], [2.21, .12, 'hit'], [2.68, .12], [2.72, .5, 'hit'], [2.86, .5], [2.89, .9, 'hit'], [2.95, .9], [3.17, .15, 'in3'], [3.2, .15], [3.62, 3.5, 'outX'], [5, 2.2], [6.35, -.6], [6.55, -.6], [6.8, 0, 'hit'],
+    [8.12, 0], [8.14, -.5, 'outX'], [8.9, -.14], [10.3, -.14], [10.8, -.08], [14.19, -.08], [14.2, 0, 'step'], [16.3, 0], [16.34, -.06, 'hit'], [18.62, -.06], [18.66, -.02, 'hit'], [18.84, -.02], [18.88, 0, 'hit']]),
+  rr: track([[0, 0], [2.4, 0], [2.45, .03, 'hit'], [2.95, .03], [3.17, 0], [3.2, 0], [3.62, 1.6, 'outX'], [5, 1], [6.35, .1], [6.55, .1], [6.8, 0, 'hit']]),
+  bx: track([[0, 0], [1.85, 0], [1.92, -.28, 'hit'], [2.55, -.28], [2.59, -.9, 'hit'], [2.78, -.9], [2.82, -1.7, 'hit'], [2.92, -1.7], [2.95, -2.8, 'hit'], [3.17, -.35, 'in3'], [3.2, -.35], [3.62, -13, 'outX'], [5, -7.5], [6.35, -.9], [6.6, -.9], [6.84, 0, 'hit'],
+    [8.24, 0], [8.26, -.9, 'outX'], [9, -.3], [10.3, -.3], [10.8, -.12], [14.19, -.12], [14.2, 0, 'step'], [16.8, 0], [17.3, -.3], [18.7, -.3], [18.74, -.1, 'hit'], [18.86, -.1], [18.9, 0, 'hit']]),
+  by: track([[0, 0], [1.85, 0], [1.92, -.2, 'hit'], [2.55, -.2], [2.59, -.5, 'hit'], [2.78, -.5], [2.82, -.9, 'hit'], [2.92, -.9], [2.95, -1.5, 'hit'], [3.17, -.2, 'in3'], [3.2, -.2], [3.62, -4.5, 'outX'], [5, -3], [6.35, .5], [6.6, .5], [6.84, 0, 'hit'],
+    [8.24, 0], [8.26, .55, 'outX'], [9, .2], [10.3, .2], [10.8, .1], [14.19, .1], [14.2, 0, 'step'], [16.8, 0], [17.3, .2], [18.7, .2], [18.74, .06, 'hit'], [18.86, .06], [18.9, 0, 'hit']]),
+  br: track([[0, 0], [3.2, 0], [3.62, -1.2, 'outX'], [5, -.8], [6.35, -.1], [6.6, -.1], [6.84, 0, 'hit']]),
+  kx: track([[0, 0], [2.95, 0], [2.97, .4, 'hit'], [3.17, 0, 'in3'], [3.2, 0], [3.62, 1.5, 'outX'], [5, 1], [6.35, .4], [6.5, .4], [6.76, 0, 'hit']]),
+  ky: track([[0, 0], [3.2, 0], [3.62, -1, 'outX'], [5, -.6], [6.35, .3], [6.5, .3], [6.76, 0, 'hit']]),
+  kr: track([[0, 0], [2.15, 0], [2.2, .08, 'hit'], [2.95, .08], [3.17, 0], [3.2, 0], [3.62, -.5, 'outX'], [5, -.3], [6.35, 0]]),
+  zl: track([[0, 0], [2.95, 0], [3.17, LZ(.955), 'in3'], [3.2, LZ(.955)], [3.75, LZ(2.6), 'outX'], [5, LZ(5.5)], [6.4, LZ(21)], [6.9, LZ(23), 'lin'], [7.62, LZ(.78), 'ioX'], [8, LZ(.78)], [8.09, LZ(1.035), 'outX'], [8.7, 0], [12.9, 0], [14.19, LZ(1.07), 'in2'], [14.2, 0, 'step']]),
+  cr: track([[0, 0], [3.2, 0], [3.75, -7, 'outX'], [6.4, -2.5], [6.9, 0], [8, 0]]),
+  bAng: track([[0, 75], [3.5, 75], [5.6, 21], [6.5, 21], [6.9, 75], [11.85, 75], [11.9, 0, 'step'], [12.6, 0], [13.9, 9], [14.19, 9], [14.2, 75, 'step']]),
+  rAng: track([[0, 15], [12.6, 15], [12.62, -3, 'step'], [13.9, -7], [14.19, -7], [14.2, 15, 'step']]),
+  bMorph: track([[0, 0], [11.85, 0], [11.9, 1, 'step'], [14.19, 1], [14.2, 0, 'step']]),
+  rMorph: track([[0, 0], [12.6, 0], [12.62, 1, 'step'], [14.19, 1], [14.2, 0, 'step']]),
+  modeB: track([[0, 0], [3.9, 0], [4.7, 1], [6.45, 1], [6.5, 0, 'step']]),
+  bCell: track([[0, .78], [11.85, .78], [11.9, 1.15, 'step'], [14.19, 1.15], [14.2, .78, 'step']]),
+  rCell: track([[0, .78], [12.6, .78], [12.62, 1.1, 'step'], [14.19, 1.1], [14.2, .78, 'step']]),
+};
+// press accelerating before the snap: frequency climbs, amplitude swells, then zero
+const chaos = t => t >= 12.5 && t < 14.2 ? E.in2(seg(t, 12.5, 14.18)) : 0;
+const chaosPh = t => { const u = seg(t, 12.5, 14.2); return TAU * (2 * (t - 12.5) + 6.8 * u * u * u); };
+const IMPACTS = [[3.2, .9], [8, 1.5], [8.12, .45], [8.24, .4], [12.4, .7], [14.2, .35]];
+
+function direct(t) {
+  const L = LY, c = press.cam, rg = press.reg;
+  rg[0].x = TRK.kx(t); rg[0].y = TRK.ky(t); rg[0].r = TRK.kr(t) * D2R;
+  rg[1].x = TRK.rx(t); rg[1].y = TRK.ry(t); rg[1].r = TRK.rr(t) * D2R;
+  rg[2].x = TRK.bx(t); rg[2].y = TRK.by(t); rg[2].r = TRK.br(t) * D2R;
+  for (const r of rg) { r.px = -TX; r.py = 0; r.s = 1; }
+  const ch = chaos(t);
+  if (ch) {
+    const ph = chaosPh(t);
+    rg[0].x += ch * .9 * Math.sin(ph * .5 + 1); rg[0].y += ch * .6 * Math.sin(ph * .7);
+    rg[1].x += ch * 3.2 * Math.sin(ph); rg[1].y += ch * 1.4 * Math.cos(ph * 1.3); rg[1].r += ch * .8 * D2R * Math.sin(ph * .6);
+    rg[2].x -= ch * 2.6 * Math.sin(ph * 1.1 + 2); rg[2].y -= ch * 1.8 * Math.sin(ph * .9); rg[2].r -= ch * .6 * D2R * Math.cos(ph * .5);
+  }
+  // camera
+  c.z = 2 ** TRK.zl(t); c.r = TRK.cr(t) * D2R;
+  const [gx, gy] = L.G, [mx, my] = L.MK;
+  if (t < 3.2 || t >= 7.62) { c.x = 0; c.y = 0; }
+  else if (t < 3.75) { const u = E.outX(seg(t, 3.2, 3.75)); c.x = gx * u; c.y = gy * u; }
+  else if (t < 6.4) { const z0 = 2 ** TRK.zl(3.75), k = 1 - E.io3(seg(t, 3.75, 6.4)); c.x = mx - (mx - gx) * z0 * k / c.z; c.y = my - (my - gy) * z0 * k / c.z; }
+  else if (t < 6.9) { c.x = mx; c.y = my; }
+  else { const k = E.ioX(seg(t, 6.9, 7.62)) * .78; c.x = mx - mx * k / c.z; c.y = my - my * k / c.z; }
+  for (const [a, amp] of IMPACTS) {
+    const s = ring(t, a, 9, 11) * amp / c.z;
+    if (s) { c.x += s * (hash(a) - .5) * 2; c.y += s * (hash(a + 1) - .3); }
+  }
+  // screens
+  const sc = press.scr;
+  sc[0].c = .78; sc[0].a = 45 * D2R; sc[0].m = 0; sc[0].b = 0;
+  sc[1].c = TRK.rCell(t); sc[1].a = TRK.rAng(t) * D2R; sc[1].m = TRK.rMorph(t); sc[1].b = TRK.modeB(t);
+  sc[2].c = TRK.bCell(t); sc[2].a = TRK.bAng(t) * D2R; sc[2].m = TRK.bMorph(t); sc[2].b = TRK.modeB(t);
+  // ink: dot gain swells on every impression
+  const ik = press.ink;
+  ik[0].g = .05 + .25 * pulse(t, 8, 5) + .12 * pulse(t, 3.2, 6);
+  ik[1].g = .05 + .22 * pulse(t, 8.12, 5) + .12 * pulse(t, 3.2, 6) + .15 * pulse(t, 12.4, 5);
+  ik[2].g = .05 + .22 * pulse(t, 8.24, 5) + .12 * pulse(t, 3.2, 6) + .1 * pulse(t, 11.9, 4);
+  const crisp = t >= 14.2 && t < 16.3;
+  const macro = Math.min(1, 2.6 / c.z);
+  for (const k of ik) k.r = (crisp ? .016 : .045 + .05 * ch) * macro;
+}
+
+// ─────────── helpers
+function row3(slots, sts, xf) {
+  for (const s of slots) for (let p = 0; p < 3; p++) {
+    const o = sts[p]; if (!o) continue;
+    if (xf) { const q = xf(s, p); if (!q) continue; glyph('D', s.ch, q.x, q.y, q.em || s.em, Object.assign({}, o, q.o)); }
+    else glyph('D', s.ch, s.x, s.y, s.em, o);
+  }
+}
+const pad = n => String(n).padStart(2, '0');
+const sgn = v => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2);
+
+// ─────────── the sheet: marks that live outside the trim and never leave
+function sheet(t) {
+  const g = .9, Lm = 2.2, w = .1;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    line(sx * (TX + g), sy * TY, sx * (TX + g + Lm), sy * TY, w, LN);
+    line(sx * TX, sy * (TY + g), sx * TX, sy * (TY + g + Lm), w, LN);
+  }
+  const m = 1.75;
+  regMark(0, TY + m, .95); regMark(0, -TY - m, .95); regMark(-TX - m, 0, .95); regMark(TX + m, 0, .95);
+  const rg = press.reg;
+  micro('MISREGISTERED   —   JOB 26-0917   —   IMPRESSION ' + String(IMP).padStart(6, '0') + '   —   PLATES K · R · B   —   60 LPI   —   45° 15° 75°', -TX, TY + 1.35, .74, LN, 'M');
+  micro('FRAME ' + String(FRAME).padStart(7, '0'), TX, TY + 1.35, .74, Object.assign({al: 1}, LN), 'M');
+  // colour bar
+  const cb = [[K, 1], [K, .75], [K, .5], [K, .25], [R, 1], [R, .75], [R, .5], [R, .25], [B, 1], [B, .75], [B, .5], [B, .25], [R | B, 1], [KRB, 1]];
+  const y0 = -TY - 2.55, s = 1.55;
+  cb.forEach(([p, v], i) => rect(-TX + 6 + i * 1.8, y0, -TX + 6 + i * 1.8 + s, y0 + s, {p, tone: v}));
+  micro('K ' + sgn(rg[0].x) + ' ' + sgn(rg[0].y) + '    R ' + sgn(rg[1].x) + ' ' + sgn(rg[1].y) + '    B ' + sgn(rg[2].x) + ' ' + sgn(rg[2].y), TX, -TY - 2.35, .74, Object.assign({al: 1}, LN), 'M');
+  // left-margin rule, every unit
+  for (let y = Math.ceil(-TY); y <= TY; y++) {
+    const l = y % 10 === 0 ? 1.1 : y % 5 === 0 ? .75 : .42;
+    line(-TX - .5 - l, y, -TX - .5, y, .07, {p: K, m: LINE});
+  }
+  // right margin: plate legend, set vertically
+  micro('PLATE 01 K  ·  PLATE 02 R  ·  PLATE 03 B', TX + 2.35, 5, .74, Object.assign({rot: PI / 2}, LN), 'M');
+  micro('60 LPI  ·  45°  15°  75°  ·  TAC 240%', TX + 2.35, -TY + 6, .74, Object.assign({rot: PI / 2}, LN), 'M');
+  // microprint around the right-hand target, legible only up close
+  const [mx, my] = LY.MK, mo = {p: KRB, m: LINE, tone: .9};
+  micro('REG 04 · E', mx - .62, my + .62, .085, mo, 'M');
+  micro('X +' + mx.toFixed(3) + '  Y +' + my.toFixed(3), mx - .62, my - .74, .06, mo, 'M');
+  micro('K ' + sgn(rg[0].x) + '  R ' + sgn(rg[1].x) + '  B ' + sgn(rg[2].x), mx + .2, my - .2, .045, mo, 'M');
+  micro('TOL ±0.010', mx + .2, my + .14, .045, mo, 'M');
+  for (let i = -13; i <= 13; i++) {
+    if (!i) continue;
+    const l = i % 5 === 0 ? .24 : .14;
+    line(mx + i * .1, my - l, mx + i * .1, my + l, .014, mo);
+    line(mx - l, my + i * .1, mx + l, my + i * .1, .014, mo);
+  }
+}
+
+// ─────────── P0: the poster
+function drawP0(k, r, b, n1, bl, xf) {
+  const L = LY;
+  for (const rw of L.P0) row3(rw, [k, r, b], xf);
+  if (n1) for (const s of L.n001) glyph('D', s.ch, s.x, s.y, s.em, n1);
+  if (bl) {
+    const q = L.blk, solid = bl.tone >= .99 && !bl.soft;
+    rect(q.x0, q.y0, q.x1, q.y1, solid ? Object.assign({}, bl, {m: LINE}) : bl);
+    if (solid) {
+      const ko = {p: B, m: KO, bold: .035}, km = {p: B, m: KO, bold: .025};
+      micro('PLATE 03 — COBALT — 75° — 60 LPI', q.x0 + 2.6, q.y1 - 3.6, 1.1, ko);
+      micro('MISREGISTERED', q.x0 + 2.6, q.y0 + 3.9 + 1.3, 1.5, ko);
+      micro('A PRINT IN MOTION  ·  3 PLATES  ·  20.00 S  ·  LOOP', q.x0 + 2.6, q.y0 + 3.9 - 1, .9, km, 'M');
+    }
+  }
+}
+function poster(t) {
+  if (t >= 6.5) return;
+  const kT = track([[3.45, 1], [4.3, 0, 'in2']])(t), kS = track([[3.3, 0], [4.2, 1.6, 'out2']])(t);
+  const rT = track([[3.25, 1], [3.9, .62, 'out3'], [5.2, .56], [6.2, 0, 'in2']])(t), rS = track([[3.25, 0], [4, 2.2, 'out3'], [6, 3, 'lin']])(t);
+  const bT = track([[3.25, 1], [3.95, .6, 'out3'], [5.2, .55], [6.25, 0, 'in2']])(t), bS = track([[3.25, 0], [4.05, 2, 'out3'], [6, 3, 'lin']])(t);
+  drawP0(S3(K, kT, kS), S3(R, rT, rS), S3(B, bT, bS), S3(R, rT, rS), S3(B, bT, bS * .6));
+}
+
+// ─────────── the dot field the camera falls into
+function field(t) {
+  const a = sm(seg(t, 4.7, 5.4)) * (1 - sm(seg(t, 6.05, 6.45)));
+  if (a <= 0) return;
+  const c = press.cam, rr = Math.hypot(VX, VY) / c.z * 1.3, [mx, my] = LY.MK;
+  disc(c.x, c.y, rr, {p: R, tone: .44 * a});
+  disc(c.x + .3, c.y - .2, rr, {p: B, tone: .4 * a});
+  const hole = lerp(1.25, 6.5, E.in3(seg(t, 5.4, 6.45)));
+  disc(mx, my, hole, {p: R | B, m: KO, soft: hole * .9});
+}
+
+// ─────────── the empty sheet: the grid FORM will be stamped onto
+function blueprint(t) {
+  if (t < 7.3 || t >= 9.3) return;
+  const m = LY.m, o = {p: B, m: LINE, tone: .9}, ok = {p: K, m: LINE};
+  const cols = 12, cw = (2 * TX - 2 * m - (cols - 1) * m) / cols;
+  for (let i = 0; i <= cols; i++) {
+    const d = E.io3(seg(t, 7.3 + i * .02, 7.62 + i * .02));
+    if (d <= 0) continue;
+    const xa = -TX + m + i * (cw + m), ya = TY - 2 * TY * d;
+    if (i < cols) { line(xa, TY, xa, ya, .085, o); line(xa + cw, TY, xa + cw, ya, .085, o); micro(pad(i + 1), xa + .45, TY - 1.8, .8, o, 'M'); }
+  }
+  const d = E.io3(seg(t, 7.42, 7.78));
+  for (const y of LY.b.concat([TY - m, -TY + m])) line(-TX, y, -TX + 2 * TX * d, y, .085, o);
+  const a = t >= 7.66;
+  if (a) {
+    const yd = TY - 3.6;
+    line(-TX, yd, TX, yd, .05, ok); line(-TX, yd - .6, -TX, yd + .6, .05, ok); line(TX, yd - .6, TX, yd + .6, .05, ok);
+    micro('W  ' + (TX * 4).toFixed(1) + ' MM', 0, yd + .5, .72, Object.assign({al: .5}, ok), 'M');
+    const xd = -TX + 1.3;
+    line(xd, -TY, xd, TY, .05, ok); line(xd - .6, TY, xd + .6, TY, .05, ok); line(xd - .6, -TY, xd + .6, -TY, .05, ok);
+    micro('H  ' + (TY * 4).toFixed(1) + ' MM', xd - .5, -8, .72, Object.assign({rot: PI / 2}, ok), 'M');
+    micro('12 COL  ·  GUTTER ' + (m * 2).toFixed(1) + '  ·  BASELINE ' + ((LY.b[0] - LY.b[1]) * 2).toFixed(2), -TX + m + .45, -TY + m + .6, .68, o, 'M');
+  }
+}
+
+// ─────────── FORM: stamped, cut, compressed into a rule
+function form(t) {
+  if (t < 8 || t >= 12.05) return;
+  const L = LY, N = t < 9.3 ? 1 : 16, top = -TY + L.m + L.capF * L.syF, bot = -TY + L.m;
+  const h = (top - bot) / N, keep = N > 1 ? 7 : 0;
+  const sl = t < 8.06 ? 1 + .22 * (1 - E.outX(seg(t, 8, 8.06))) : 1;
+  const cut = sm(seg(t, 9.3, 9.42));
+  const showR = t >= 8.12, showB = t >= 8.24;
+  for (let i = 0; i < N; i++) {
+    if (i !== keep && t >= 10.6) continue;
+    const y0 = bot + i * h, yc = y0 + h / 2, dir = i % 2 ? 1 : -1;
+    const ts = 9.45 + .016 * i + .01 * hash(i * 3.1);
+    let dx = dir * (18 + 34 * hash(i + .5)) * E.outX(seg(t, ts, ts + .34));
+    const tk = 9.8 + .012 * Math.abs(i - keep);
+    const k = lerp(1, .035, E.io3(seg(t, tk, tk + .28)));
+    const to = 10.02 + .016 * Math.abs(i - keep);
+    if (i !== keep) dx += -300 * E.in3(seg(t, to, to + .36));
+    else dx *= 1 - E.hit(seg(t, 10.2, 10.42));
+    const gap = cut * .28 * k;
+    const cy0 = N > 1 ? yc - (h / 2 - gap) * k : -1e5, cy1 = N > 1 ? yc + (h / 2 - gap) * k : 1e5;
+    const clip = [-1e5, cy0, 1e5, cy1];
+    const tf = (x, y) => [x * sl + dx, yc + (y - yc) * k * (t < 8.06 ? sl : 1)];
+    for (const s of L.FORM) {
+      const [x, y] = tf(s.x, s.y);
+      glyph('D', s.ch, x, y, s.em * sl, {p: K, sy: L.syF * k, clip});
+      if (showB) glyph('D', s.ch, x + 1.8, y - 1.8 * k, s.em * sl, {p: B, tone: .5, sy: L.syF * k, clip, soft: .3});
+    }
+    // the shadow is knocked out under the black, with a hairline trap
+    if (showB) for (const s of L.FORM) { const [x, y] = tf(s.x, s.y); glyph('D', s.ch, x, y, s.em * sl, {p: B, m: KO, sy: L.syF * k, clip, bold: -.12}); }
+    if (showR) {
+      const rc = [-1e5, Math.max(cy0, -TY - 1.2), 1e5, Math.min(cy1, 0)];
+      if (rc[3] > rc[1]) rect(-TX - 1.2 + dx, rc[1] - 1, TX + 1.2 + dx, rc[3] + 1, {p: R, clip: rc});
+    }
+  }
+}
+
+// ─────────── quiet: technical typography, a lot of paper
+function quiet(t) {
+  if (t < 10.35 || t >= 12.1) return;
+  const m = LY.m, x = -TX + m, rg = press.reg;
+  const f1 = t >= 10.4, f2 = t >= 10.62, f3 = t >= 11.05;
+  const o = {p: K, m: LINE}, oM = {p: K, m: LINE};
+  if (f1) {
+    text('D', '002', x, TY - m - 7.2, 7.2, {p: R, tr: -.02});
+    micro('FORM  —  CUT INTO 16  —  COMPRESSED  —  1 RULE KEPT', x + 21, TY - m - 7.2 + 1.9, .95, o);
+    micro('THE REST IS PAPER.', x + 21, TY - m - 7.2 + .05, .95, o);
+  }
+  if (f2) {
+    const yb = -TY + m + 9.6, lh = 1.75;
+    const tw = micro('PLATE    INK             ANGLE    LPI    DENSITY    ΔX       ΔY', x, yb, .82, oM, 'M');
+    line(x, yb - .7, x + tw, yb - .7, .06, o);
+    const rows = [['01  K', 'BLACK          ', '45°', '1.62', 0], ['02  R', 'FLUORESCENT RED', '15°', '1.18', 1], ['03  B', 'COBALT         ', '75°', '1.34', 2]];
+    rows.forEach((r, i) => micro(r[0] + '    ' + r[1] + '  ' + r[2] + '      60     ' + r[3] + '       ' + sgn(rg[r[4]].x) + '    ' + sgn(rg[r[4]].y), x, yb - (i + 1) * lh - .4, .82, oM, 'M'));
+    [K, R, B].forEach((pl, i) => rect(x + tw + 2, yb - (i + 1) * lh - .55, x + tw + 3.1, yb - (i + 1) * lh + .55, {p: pl}));
+  }
+  if (f3) {
+    micro('TRAP 0.08 PT    DOT GAIN 14%    TAC 240%    REGISTER ±0.02 MM', x, -TY + m + .3, .82, oM, 'M');
+    regMark(TX - m - 1.4, -TY + m + 1.4, 1.1, LN, .09);
+    micro('→ 003', TX - m - 4, -TY + m + 1.05, .82, Object.assign({al: 1}, oM), 'M');
+  }
+}
+
+// ─────────── burst + climax: rolls, screens, words, convergence
+function burst(t) {
+  if (t < 11.9 || t >= 14.2) return;
+  const L = LY, m = L.m, ch = chaos(t);
+  const yr = LY.yRule, e = (2 * TY + 8) * E.io3(seg(t, 11.9, 12.22));
+  rect(-TX - 1.2, -TY - 1.2, TX + 1.2, TY + 1.2, {p: B, tone: .3 + .1 * ch, clip: [-1e5, yr - e, 1e5, yr + e]});
+  if (t < 12.25) {
+    rect(-TX - 1.2, yr + e - 2.2, TX + 1.2, yr + e, {p: B, tone: .95, g0: .3, g1: 1, ga: PI / 2});
+    rect(-TX - 1.2, yr - e, TX + 1.2, yr - e + 2.2, {p: B, tone: .95, g0: 1, g1: .3, ga: PI / 2});
+  }
+  // OFFSET engraved in the line screen
+  if (t >= 12.15) {
+    const a = E.out3(seg(t, 12.15, 12.3)), Lw = lay('D', 'OFFSET', 1, -.03).ink, cap = (2 * TX - 2 * m) / Lw;
+    const Lo = lay('D', 'OFFSET', cap, -.03), ox = -TX + m - Lo[0].l, yb = -cap / 2 + 4;
+    Lo.forEach((g, i) => {
+      const dx = (i - 2.5) * 5 * E.out3(seg(t, 12.3, 12.9)) + ch * 6 * Math.sin(i * 2.1 + chaosPh(t) * .5);
+      const dy = (i % 2 ? 1 : -1) * 3 * E.out3(seg(t, 12.3, 12.9));
+      glyph('D', g.ch, ox + g.x + dx, yb + dy, Lo.em, {p: B, tone: .88 * a, soft: .8});
+    });
+  }
+  // ERROR slams in red, larger than the sheet
+  if (t >= 12.4) {
+    const cap = 74, Le = lay('D', 'ERROR', cap, -.04);
+    const sl = 1 + .3 * (1 - E.outX(seg(t, 12.4, 12.47)));
+    const ox = -Le.width / 2 + 38 - 22 * E.io3(seg(t, 12.47, 14.2)), yb = -cap / 2 + 9;
+    const tone = t < 12.62 ? 1 : .55 + .1 * ch;
+    for (const g of Le) glyph('D', g.ch, ox + g.x * sl, yb, Le.em * sl, {p: R, tone, rot: -PI / 2 * 0, soft: t < 12.62 ? 0 : .5});
+  }
+  // geometry: a giant target, drifting out of true
+  if (t >= 12.9) {
+    const a = E.outX(seg(t, 12.9, 13.1)), r = lerp(10, 36, E.in2(seg(t, 12.9, 14.2)));
+    const o = {p: KRB, m: LINE};
+    hoop(0, 0, r * a, .55, o); hoop(0, 0, r * .5 * a, .4, o);
+    line(-TX - 1.2, 0, TX + 1.2, 0, .3, o); line(0, -TY - 1.2, 0, TY + 1.2, .3, o);
+  }
+}
+
+// convergence: every glyph of the final sentence rushes in on rails
+const LAG = [1.45, 1, 1.22];
+function p1Chaos(s, p, t) {
+  const k = 1 - E.in2(seg(t, 12.9, 14.2)), dir = s.line === 1 ? -1 : 1, lag = LAG[p];
+  const n = LY.P1[s.line].length, spread = (s.j - (n - 1) / 2) * 7 * k * lag;
+  return {x: s.x + dir * (58 + 26 * s.line) * lag * k + spread, y: s.y};
+}
+
+// ─────────── P1: PERFECT IS BORING.  then the machine resets it
+function slotsP1() { return [].concat(...LY.P1); }
+function p1(t) {
+  const L = LY;
+  if (t >= 12.9 && t < 14.2) {
+    for (const rw of L.P1) row3(rw, [S3(K), S3(R), S3(B)], (s, p) => p1Chaos(s, p, t));
+    const k = 1 - E.in2(seg(t, 12.9, 14.2));
+    for (const [q, pl, lg] of [[L.sqR, R, LAG[1]], [L.sqB, B, LAG[2]]]) {
+      const dx = -84 * lg * k * (pl === B ? 1.15 : 1);
+      rect(q.x0 + dx, q.y0, q.x1 + dx, q.y1, {p: pl});
+    }
+    return;
+  }
+  if (t < 14.2 || t >= 18.9) return;
+  const mv = t >= 16.7;
+  if (!mv) {
+    for (const rw of L.P1) row3(rw, [S3(K), S3(R), S3(B)]);
+    rect(L.sqR.x0, L.sqR.y0, L.sqR.x1, L.sqR.y1, {p: R});
+    rect(L.sqB.x0, L.sqB.y0, L.sqB.x1, L.sqB.y1, {p: B});
+    return;
+  }
+  rebuild(t);
+}
+
+// P1 → P0: the error spreads from the full stop as misregistration; unneeded letters fall to dots;
+// then the machine sets MIS / REGIS / TERED in reading order, each letter clicking into register as it lands
+const MAP = [ // [p0 line, p0 index, p1 line, p1 index]  (−1 = printed fresh)
+  [0, 0, -1, 0], [0, 1, 1, 0], [0, 2, 1, 1],
+  [1, 0, 0, 2], [1, 1, 0, 1], [1, 2, 2, 5], [1, 3, 2, 3], [1, 4, -1, 0],
+  [2, 0, 0, 6], [2, 1, 0, 4], [2, 2, 2, 2], [2, 3, -1, 0], [2, 4, -1, 0]];
+const EXIT = [[0, 0], [0, 3], [0, 5], [2, 0], [2, 1], [2, 4], [2, 6]];
+const SPL = [[0, 0], [1.35, -.5], [-1.15, .62]];
+const SET0 = 17.25, SETDT = .075;
+function waveT(x, y) {
+  const s = LY.P1[2][6], d = Math.hypot(x - (s.x + 2), (y - s.y) * 1.6);
+  return 16.7 + d / 190 * .5;
+}
+const splitAt = (t, tw, tl) => sm(seg(t, tw, tw + .3)) * (1 - E.hit(seg(t, tl, tl + .14)));
+function rebuild(t) {
+  const L = LY;
+  MAP.forEach(([l0, i0, l1, i1], n) => {
+    const tgt = L.P0[l0][i0], ts = SET0 + n * SETDT;
+    if (l1 < 0) {
+      const a = E.out3(seg(t, ts + .1, ts + .32));
+      if (a > 0) for (let p = 0; p < 3; p++) glyph('D', tgt.ch, tgt.x, tgt.y, tgt.em, {p: 1 << p, tone: a, soft: 2.4 * (1 - a)});
+      return;
+    }
+    const src = L.P1[l1][i1], tw = waveT(src.x, src.y);
+    const u1 = E.io4(seg(t, ts, ts + .2)), u2 = E.io4(seg(t, ts + .13, ts + .32));
+    const x = lerp(src.x, tgt.x, u1), y = lerp(src.y, tgt.y, u2), em = lerp(src.em, tgt.em, u2);
+    const sp = splitAt(t, tw, ts + .3);
+    for (let p = 0; p < 3; p++) glyph('D', src.ch, x + SPL[p][0] * sp, y + SPL[p][1] * sp, em, {p: 1 << p});
+  });
+  for (const [l1, i1] of EXIT) {
+    const s = L.P1[l1][i1], tw = waveT(s.x, s.y), a = 1 - E.in2(seg(t, tw + .05, tw + .38));
+    if (a <= 0) continue;
+    const sp = splitAt(t, tw, 99);
+    for (let p = 0; p < 3; p++) glyph('D', s.ch, s.x + SPL[p][0] * sp, s.y + SPL[p][1] * sp, s.em, {p: 1 << p, tone: a, soft: 2.6 * (1 - a)});
+  }
+  // the red square falls to dots and 001 prints once MIS is set; the blue square extends into the block
+  const tr = waveT(L.sqR.x0, L.sqR.y0), ar = 1 - E.in2(seg(t, tr + .05, tr + .38));
+  if (ar > 0) rect(L.sqR.x0, L.sqR.y0, L.sqR.x1, L.sqR.y1, {p: R, tone: ar, soft: 2 * (1 - ar)});
+  const t1 = SET0 + 9.5 * SETDT, a1 = E.out3(seg(t, t1, t1 + .3));
+  if (a1 > 0) for (const s of L.n001) glyph('D', s.ch, s.x, s.y, s.em, {p: R, tone: a1, soft: 2.4 * (1 - a1)});
+  const g1 = E.io4(seg(t, SET0, SET0 + .24)), g2 = E.io4(seg(t, SET0 + .2, SET0 + .46));
+  const q = L.blk, sq = L.sqB;
+  rect(lerp(sq.x0, q.x0, g1), lerp(sq.y0, q.y0, g2), lerp(sq.x1, q.x1, g1), lerp(sq.y1, q.y1, g2), {p: B});
+}
+function tail(t) { // settled: the opening frame, exactly
+  if (t < 18.9) return;
+  drawP0(S3(K), S3(R), S3(B), S3(R), S3(B));
+}
+
+function compose(t) {
+  poster(t);
+  field(t);
+  blueprint(t);
+  form(t);
+  quiet(t);
+  burst(t);
+  p1(t);
+  tail(t);
+  sheet(t);
+}
+
+// ═══════════════════════════════════════════════════════════════ render
+function planeMatrices() {
+  const c = press.cam;
+  const view = chain(Mx.S(c.z), Mx.R(c.r), Mx.T(-c.x, -c.y));
+  const clip = Mx.S(1 / VX, 1 / VY);
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    const r = press.reg[i];
+    const A = chain(Mx.T(r.px + r.x, r.py + r.y), Mx.R(r.r), Mx.S(r.s), Mx.T(-r.px, -r.py));
+    const M = chain(clip, view, A);
+    const s2p = Mx.inv(chain([W / 2, 0, 0, H / 2, W / 2, H / 2], M));
+    const p2s = chain([.5, 0, 0, .5, .5, .5], M);
+    out.push({M, s2p, p2s});
+  }
+  const s2w = Mx.inv(chain([W / 2, 0, 0, H / 2, W / 2, H / 2], clip, view));
+  return {out, s2w};
+}
+function render(t) {
+  resize();
+  U = Math.min(H / 100, W / 160); VX = W / (2 * U); VY = H / (2 * U);
+  TX = VX - 3.6; TY = Math.min(VY - 3.6, TX * .75);
+  nI = 0; batches = []; curMode = -1;
+  layouts();
+  direct(t);
+  PXS = 1 / (U * press.cam.z);
+  compose(t);
+  const {out, s2w} = planeMatrices();
+
+  // plates
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(PL.p);
+  gl.uniformMatrix3fv(PL.u.uM, false, new Float32Array([].concat(...out.map(o => Mx.gl(o.M)))));
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, atlasTex); gl.uniform1i(PL.u.uAtlas, 0);
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ib); gl.bufferSubData(gl.ARRAY_BUFFER, 0, ID, 0, nI * IF);
+  gl.enable(gl.BLEND);
+  for (const b of batches) {
+    if (!b.n) continue;
+    if (b.blend) { gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR); }
+    else gl.blendEquation(gl.MAX);
+    for (let i = 1; i < 8; i++) gl.vertexAttribPointer(i, 4, gl.FLOAT, false, IF * 4, (b.start * IF + (i - 1) * 4) * 4);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, b.n);
+  }
+  gl.disable(gl.BLEND);
+  gl.bindVertexArray(null);
+  gl.bindTexture(gl.TEXTURE_2D, toneTex); gl.generateMipmap(gl.TEXTURE_2D);
+  gl.bindTexture(gl.TEXTURE_2D, lineTex); gl.generateMipmap(gl.TEXTURE_2D);
+
+  // print
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(PR.p);
+  const u = PR.u;
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, toneTex); gl.uniform1i(u.uTone, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, lineTex); gl.uniform1i(u.uLine, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, noiseTex); gl.uniform1i(u.uNoise, 2);
+  gl.uniform2f(u.uRes, W, H);
+  gl.uniformMatrix3fv(u.uS2P, false, new Float32Array([].concat(...out.map(o => Mx.gl(o.s2p)))));
+  gl.uniformMatrix3fv(u.uP2S, false, new Float32Array([].concat(...out.map(o => Mx.gl(o.p2s)))));
+  gl.uniformMatrix3fv(u.uS2W, false, new Float32Array(Mx.gl(s2w)));
+  gl.uniform4fv(u.uScr, new Float32Array([].concat(...press.scr.map(s => [s.c, s.a, s.m, s.b]))));
+  gl.uniform4fv(u.uInk, new Float32Array([].concat(...press.ink.map(s => [s.g, s.d, s.r, 0]))));
+  gl.uniform3fv(u.uT, new Float32Array([].concat(...TRANS)));
+  gl.uniform3fv(u.uPaper, new Float32Array(PAPER));
+  gl.uniform1f(u.uPx, PXS);
+  gl.uniform1i(u.uP3, P3 ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+// ═══════════════════════════════════════════════════════════════ run
+const fixedT = () => { const m = /t=([\d.]+)/.exec(location.hash); return m ? +m[1] : null; };
+let t0 = null, acc = 0, cnt = 0, last = 0, held = null, warm = 90;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (t0 === null) t0 = ts;
+  const el = (ts - t0) / 1000, fx = fixedT();
+  const key = fx === null ? null : fx + '/' + innerWidth + 'x' + innerHeight;
+  if (key !== null && key === held) return;
+  held = key;
+  const t = fx !== null ? fx % LOOP : el % LOOP;
+  IMP = 417 + Math.floor((fx !== null ? fx : el) / LOOP + (t >= 14.2 ? 1 : 0));
+  FRAME = Math.floor((fx !== null ? fx : el) * 60);
+  const dt = ts - last; last = ts;
+  // if the GPU keeps missing frames, print on a coarser plate (never below half resolution)
+  if (fx === null && dt > 0 && dt < 120 && --warm < 0) {
+    acc += dt; cnt++;
+    if (cnt === 40) { if (acc / cnt > 22 && dprScale > .5) dprScale *= .85; acc = cnt = 0; }
+  }
+  render(t);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
