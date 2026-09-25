@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MISREGISTERED — AI Creative Lab</title>
+  <meta name="description" content="Claude Opus 5.5（Claude Code）が作る20秒のWebGL2モーショングラフィックス。3版のポスターが見当ズレを起こし、網点に溶け、刻印され、裁断され、また組み直される。実物、制作条件、プロンプトと観察の記録。">
+  <link rel="canonical" href="https://akkie8.github.io/ai-creative-lab/works/misregistered/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:title" content="MISREGISTERED — AI Creative Lab">
+  <meta property="og:description" content="Claude Opus 5.5（Claude Code）が作る20秒のWebGL2モーショングラフィックス。3版のポスターが見当ズレを起こし、網点に溶け、刻印され、裁断され、また組み直される。実物、制作条件、プロンプトと観察の記録。">
+  <meta property="og:url" content="https://akkie8.github.io/ai-creative-lab/works/misregistered/">
+  <meta property="og:image" content="https://akkie8.github.io/ai-creative-lab/assets/ogp.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">作品と実験記録へ</a>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../../index.html">AI Creative Lab</a>
+      <nav aria-label="メインナビゲーション"><a href="../../index.html#experiments">Experiments</a><a href="../../index.html#about">About</a><a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a></nav>
+    </header>
+    <main id="main">
+<section class="hero"><p class="eyebrow">Claude Opus 5.5（Claude Code） · 2026-09-25</p><h1>MISREGISTERED</h1><p class="subtitle">印刷の失敗が振り付けになる、3版刷りの20秒ループ。</p></section>
+<section class="note-section" aria-labelledby="question-title"><h2 id="question-title">Question<br>問い</h2><div class="prose"><p>見当ズレ、網点、オーバープリント、モアレ、トンボ。印刷の不具合そのものを動きの素材にしたら、ブラウザの中で「刷られている」と感じる映像になるか。どのコマで止めてもポスターとして成立させられるか。</p></div></section>
+<section class="exhibition" aria-labelledby="work-title"><div class="section-head"><h2 id="work-title">The work</h2><span>CLAUDE OPUS 5.5 / 2026</span></div>
+<div class="media"><iframe src="../../experiments/misregistered/opus-5-5/index.html" title="MISREGISTERED（作品のHTMLをそのまま表示）" allow="fullscreen"></iframe></div>
+<div class="label"><div><h3>MISREGISTERED</h3><p>20-second print-press motion loop</p><a class="button" href="../../experiments/misregistered/opus-5-5/index.html">作品を開く ↗</a></div><div><dl><div><dt>Model</dt><dd>Claude Opus 5.5（Claude Code）</dd></div><div><dt>Created</dt><dd>2026-09-25</dd></div><div><dt>Format</dt><dd>20秒ループ / WebGL2 / Single HTML</dd></div></dl><ul class="tags" aria-label="技法"><li>Motion graphics</li><li>WebGL2</li><li>Kinetic typography</li><li>Halftone</li><li>Single HTML</li></ul></div></div>
+<p class="note">WebGL2対応ブラウザで自動再生します。操作やUIはありません。16:9の画面でいちばんきれいに収まります。URLの末尾に時刻を付けると、その時刻で止まります。<a href="../../experiments/misregistered/opus-5-5/index.html#t=4.2">#t=4.2で4.2秒の絵を見る ↗</a></p></section>
+<section class="note-section" aria-labelledby="conditions-title"><h2 id="conditions-title">Conditions<br>制作条件</h2><div class="prose"><p>Claude Code（Opus 5.5）にプロンプトを1回送り、作品が完成するまで追加の指示はしていません。コンセプトから実装までClaudeが決め、ヘッドレスChromiumで指定時刻のコマ一覧・1/15秒刻みのフィルムストリップ・等倍の拡大を撮影して、確認と修正を繰り返しています。ギャラリーへの追加は、作品の納品後に別の依頼として行いました。</p><p>HTML 1ファイルで動作し、画像・動画・ライブラリ・Webフォントは使っていません。書体は端末にあるもの（Helvetica Neue、なければHelvetica → Arialなど）を起動時に読み込み、描画はWebGL2のシェーダで毎フレーム計算しています。</p><h3>Claudeが行った修正</h3><ul><li>黒1色のFORMがグレーに見えた問題に対し、インクの濃さを覆う面積ではなく膜の厚さ（Beer–Lambert）として掛けるよう変更。</li><li>何も刷っていない紙に薄い点が並ぶ、網点のアンチエイリアスのにじみを修正。</li><li>インクのムラが四角いブロック状に見えたため、ぼかしたノイズのチャンネルを作ってなめらかに。</li><li>FORMに裁断前から細い継ぎ目が見えたため、裁断の瞬間までは1枚のまま描くよう変更。</li><li>網点の影が黒の中に透けて黒が濁ったため、影を黒の下で抜き、細いトラップだけを残した。</li><li>クライマックスで巨大な黒い文字が塊になって読めなかったため、各行が版ごとに遅れて滑り込む動きに作り直し。</li><li>PERFECT IS BORING. から MIS / REGIS / TERED への組み替えを、「誤差が広がる」と「植字機が組む」の2段階に分けた。</li><li>拡大したトンボの縁が手描きのように波打ったため、縁の荒れに画面上の上限をかけた。</li></ul></div></section>
+<section class="note-section" aria-labelledby="metrics-title"><h2 id="metrics-title">Measurements<br>計測値</h2><div class="prose"><p>時間と使用量は、作品を作ったClaude Codeセッションの情報から取得した値です。使用量はセッション単位の累計しか取れなかったため、作品の制作に加えて、ギャラリー追加の作業が始まった時点（2026-09-25 14:43Z）までを含みます。生のログはこのリポジトリには含まれていません。</p><dl><div><dt>モデルID</dt><dd><code>claude-opus-5-5</code>（セッション設定・最後に応答したモデル）</dd></div><div><dt>Effort</dt><dd>xhigh（セッション設定）</dd></div><div><dt>Human edits</dt><dd>0</dd></div><div><dt>生成時間</dt><dd>54m26s</dd></div><div><dt>モデル呼び出し回数</dt><dd>記録なし</dd></div><div><dt>Input tokens</dt><dd>25,179,768</dd></div><div><dt>Cached input / cache read</dt><dd>24,747,011</dd></div><div><dt>キャッシュ書込</dt><dd>429,860</dd></div><div><dt>通常入力（キャッシュ書込を除く）</dt><dd>2,897</dd></div><div><dt>Output tokens</dt><dd>249,675</dd></div><div><dt>Total processed tokens</dt><dd>25,429,443</dd></div><div><dt>コスト（セッション表示）</dt><dd>$13.38（参考値）</dd></div><div><dt>HTMLの実測行数</dt><dd>1,005行</dd></div><div><dt>HTMLの実測サイズ</dt><dd>54,182 bytes</dd></div></dl><p>入力は呼び出しごとに再送された履歴を含む累計で、Cached inputとキャッシュ書込はInputの内数です。Output tokensはthinkingを含みます。Total = Input + Output。</p><h3>時間・コストの注記</h3><p>13:47:06Z（セッション開始）→ 14:41:32Z（作品のコミット）で54分26秒。開始時刻は最初のプロンプトではなくセッションの作成時刻です。コンテキスト上限による自動要約は入っていません。コストはセッションが表示した値で、単価の前提は確認していないため参考値です。</p><h3>フレーム時間</h3><p>動作確認はGPUのないLinux上のヘッドレスChromium（ソフトウェア描画）で行ったため、実機のフレーム時間は<strong>未計測</strong>です。フレームが落ち続けると、作品は内部解像度を段階的に下げます（半分まで）。</p><p class="note">出典は<a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/misregistered/README.md">作品のREADME</a>です。行数とバイト数は収録HTMLを実測しています。</p></div></section>
+<section class="note-section" aria-labelledby="prompt-title"><h2 id="prompt-title">Prompt<br>プロンプト全文</h2><div class="prose"><h3>要点</h3><p>印刷の不具合を振り付けにすること、紙・黒・蛍光の赤橙・コバルトの限られた色、巨大なグロテスク体、どのコマで止めてもポスターになる構図、15〜20秒のシームレスなループを指定。MIS / REGIS / TERED で始まり、FORM が叩きつけられて壊れ、一瞬だけ完全に見当が合って PERFECT IS BORING. が現れ、小さな誤差から冒頭に戻るという流れも示しています。</p><pre>Create a single self-contained index.html that is a breathtaking, seamless looping motion-graphics artwork running entirely in the browser.
+
+This is not a website, not a landing page, not a UI, and not an interactive experience.
+
+It is a piece of graphic design in motion.
+
+CONCEPT — “MISREGISTERED”
+
+Create an experimental motion piece inspired by the physical imperfections of print:
+
+* risograph
+* screen printing
+* offset printing
+* misregistration
+* halftone screens
+* overprinting
+* ink trapping
+* moiré
+* registration marks
+* crop marks
+* editorial typography
+* Swiss / International Typographic Style
+* optical art
+* experimental poster design
+* kinetic typography
+
+The central idea:
+
+Printing errors become the choreography.
+
+Everything should feel as though an impossibly sophisticated printing press has come alive and is continuously designing, printing, misaligning, destroying, and rebuilding the same poster.
+
+It should feel tactile, graphic, physical, editorial, and extremely art-directed.
+
+Avoid the generic “creative coding” aesthetic.
+
+I want something that looks like it came from an elite motion-design studio.
+
+⸻
+
+VISUAL LANGUAGE
+
+Use an intentionally limited print-inspired palette.
+
+Think:
+
+warm paper / off-white
+deep ink black
+fluorescent red-orange
+rich cobalt / ultramarine blue
+
+Additional colors may appear naturally where simulated inks overlap.
+
+Do NOT use:
+
+* neon-on-black cyberpunk aesthetics
+* glowing particles
+* generic gradients
+* glassmorphism
+* futuristic HUDs
+* starfields
+* random floating geometry
+* generic generative-art blobs
+* obvious “AI art” aesthetics
+
+The frame should repeatedly become something that could work as a beautiful static poster if paused at almost any moment.
+
+Composition matters enormously.
+
+Use extreme scale.
+
+Typography may extend beyond the viewport.
+
+Let individual letters become architecture.
+
+Use negative space aggressively.
+
+Alternate between dense compositions and almost-empty frames.
+
+⸻
+
+TYPOGRAPHY
+
+Typography is one of the main visual materials.
+
+Use enormous, uncompromising grotesk typography.
+
+Possible phrases include:
+
+MISREGISTERED
+
+FORM
+
+OFFSET
+
+PRINT
+
+ERROR
+
+001
+
+CMYK
+
+ALIGN
+
+MISALIGN
+
+PERFECT
+IS
+BORING.
+
+Do not simply animate lines of text like presentation slides.
+
+Letters should become graphical objects.
+
+Crop them.
+
+Stretch them.
+
+Mask them.
+
+Split them into printing plates.
+
+Turn them into halftones.
+
+Let them disappear into fields of dots.
+
+Let individual glyphs become larger than the screen.
+
+Use typography as mass, rhythm, texture, and geometry.
+
+⸻
+
+PRINT IMPERFECTIONS
+
+Make the digital image feel physically printed.
+
+Simulate details such as:
+
+* independent ink plates
+* subtle plate misalignment
+* chromatic registration offsets
+* imperfect ink coverage
+* halftone dot structures
+* changing halftone angles
+* dot gain
+* overprint behavior
+* ink density variation
+* paper grain
+* rough printed edges
+* registration targets
+* crop marks
+* printer annotations
+* tiny technical numbers
+* accidental-looking offsets
+* moiré interference patterns
+
+These should not merely be decorative overlays.
+
+They should actively participate in the motion.
+
+For example:
+
+a letter separates into printing plates →
+
+the plates drift out of registration →
+
+their surfaces dissolve into halftone dots →
+
+the dots enlarge until they become abstract circles →
+
+the circles compress into lines →
+
+the lines become a new typographic composition.
+
+Everything should transform into something else.
+
+Avoid arbitrary cuts whenever a visual transformation could connect two scenes.
+
+⸻
+
+MOTION
+
+Create approximately a 15–20 second master loop.
+
+The loop must be truly seamless.
+
+The viewer should not be able to immediately identify where it restarts.
+
+Think like a motion designer, not a frontend developer.
+
+Build rhythm.
+
+Use:
+
+stillness
+→ anticipation
+→ violent graphic movement
+→ impact
+→ silence
+→ transformation
+→ acceleration
+→ resolution.
+
+Do not keep everything moving continuously.
+
+Some of the strongest moments should almost stop.
+
+Then suddenly break.
+
+Movement should sometimes feel mechanical, like a printing press:
+
+SNAP
+SLIDE
+REGISTER
+STAMP
+ROLL
+CUT
+
+Other moments should feel fluid and impossible.
+
+Use strong easing and deliberate timing.
+
+Avoid default CSS-animation feeling.
+
+Avoid objects casually floating around.
+
+Every movement should have visual intention.
+
+⸻
+
+SEQUENCE
+
+Do not treat this as a rigid storyboard, but use this as a compositional direction.
+
+Begin with an extremely strong poster-like frame dominated by:
+
+MIS
+REGIS
+TERED
+
+Hold it just long enough to register.
+
+Then something becomes subtly wrong.
+
+One printing plate shifts.
+
+Then another.
+
+Registration breaks apart.
+
+The typography separates into multiple ink layers.
+
+The composition violently expands.
+
+Letters become halftone structures.
+
+Halftones become enormous abstract fields.
+
+Moiré patterns emerge from overlapping screens.
+
+The camera/composition appears to travel through the printed structure.
+
+Registration marks and printer metadata briefly become dominant graphical elements.
+
+A massive typographic composition slams into place.
+
+FORM
+
+Then destroys itself.
+
+A quieter composition appears.
+
+Small technical typography.
+
+Large negative space.
+
+Then another burst.
+
+At some point, create one unforgettable visual climax where several systems converge:
+
+typography
+
+* halftone
+* misregistration
+* geometric composition
+* overprinting
+
+For a brief moment, everything snaps into perfect registration.
+
+Reveal:
+
+PERFECT
+IS
+BORING.
+
+Hold.
+
+Then introduce one tiny registration error.
+
+The error propagates through the entire composition.
+
+The artwork reconstructs the opening frame.
+
+The loop begins again without a visible cut.
+
+⸻
+
+GRAPHICAL DETAIL
+
+I want obsessive detail.
+
+Add tiny elements that reward looking closely:
+
+printer calibration numbers
+plate labels
+coordinates
+crop marks
+registration crosses
+micro typography
+frame counters
+ink percentages
+random-looking production codes
+measurement ticks
+
+But maintain hierarchy.
+
+This must never become visual clutter.
+
+The large composition should read instantly from across the room.
+
+The small details should reveal themselves only afterward.
+
+⸻
+
+TECHNICAL CONSTRAINTS
+
+Deliver exactly one index.html.
+
+It must run by simply opening it in a modern browser.
+
+No images.
+
+No videos.
+
+No external visual assets.
+
+No pre-rendered animation.
+
+Generate the entire visual experience procedurally with browser technologies.
+
+Canvas, WebGL2, shaders, CSS, SVG, or combinations of them are allowed.
+
+Choose whatever rendering architecture produces the strongest result.
+
+Prioritize:
+
+* smooth 60fps motion
+* crisp rendering on Retina displays
+* responsive fullscreen composition
+* correct resizing
+* stable long-running animation
+* deterministic looping
+* high visual density without unnecessary performance waste
+
+The piece should work especially well at 16:9 desktop dimensions.
+
+No controls.
+
+No buttons.
+
+No cursor interactions.
+
+No explanatory UI.
+
+No loading screen unless technically unavoidable.
+
+The artwork begins automatically.
+
+⸻
+
+QUALITY BAR
+
+Do not make a demo.
+
+Do not make a proof of concept.
+
+Do not make a collection of effects.
+
+Create a finished motion-design piece.
+
+Every frame should feel art-directed.
+
+Every transition should feel intentional.
+
+There should be a clear visual system tying the entire animation together.
+
+Be ruthless about removing anything that feels generic.
+
+If an effect looks like something commonly seen in creative-coding demos, push it further until it feels designed rather than generated.
+
+The final result should feel like:
+
+a Swiss poster
+fed into a broken industrial printing press
+directed by an experimental motion-design studio
+and somehow rendered live by the browser.
+
+Make it strange.
+
+Make it graphic.
+
+Make it tactile.
+
+Make it precise and imperfect at the same time.
+
+Make something I would want to watch loop for five minutes.
+
+Go all out.</pre><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/misregistered/prompt.md">プロンプトの記録 ↗</a></div></section>
+<section class="note-section" aria-labelledby="notes-title"><h2 id="notes-title">Observations<br>観察</h2><div class="prose"><div class="table-wrap" role="region" tabindex="0" aria-label="20秒の流れ"><table><caption>20秒の流れ</caption><thead><tr><th scope="col">秒</th><th scope="col">起きること</th></tr></thead><tbody><tr><th scope="row">0–1.4</th><td>MIS / REGIS / TERED、赤の 001、青のブロック。3版は完全に見当が合った状態で静止（前のループの終わりから続く）</td></tr><tr><th scope="row">1.4–2.9</th><td>赤の版が 0.3 ずれる。次に青。カチ、カチと刻むたびにずれが大きくなり、黒い文字の縁から赤と青がのぞく</td></tr><tr><th scope="row">2.9–3.2</th><td>3版がいったん元に戻りかけ、紙面がわずかに縮む（予兆）</td></tr><tr><th scope="row">3.2–5.0</th><td>版が弾け飛び、カメラが REGIS の G に突っ込む。黒の版は網点になって消え、赤と青の文字は網点の構造になる。青のスクリーン角度が回り、重なりにモアレが出る</td></tr><tr><th scope="row">5.0–6.4</th><td>網点が画面を埋める巨大な場になり、カメラは紙の右端のトンボへ潜っていく</td></tr><tr><th scope="row">6.4–7.1</th><td>3色にずれたトンボが画面を支配し、カチッと1つに重なる。拡大すると周りにマイクロ文字と目盛りが刷ってある</td></tr><tr><th scope="row">7.1–8.0</th><td>一気に引いて、刷り見本の全体（トンボ・カラーバー・余白の注記）が現れる。12段組のレイアウト罫が引かれ、無音になる</td></tr><tr><th scope="row">8.0–9.3</th><td>FORM が叩きつけられる（黒 → 赤 → 青の順に刷り重なる）。網点の影は黒の下を抜き、細いトラップを残す</td></tr><tr><th scope="row">9.3–10.4</th><td>FORM が16本に裁断され、左右に滑り、押しつぶされて破線の罫になる。1本だけ残る</td></tr><tr><th scope="row">10.4–11.9</th><td>静かなページ。002、刷版のデータ表（ズレ量は実際の版の位置を表示）、大きな余白</td></tr><tr><th scope="row">11.9–12.9</th><td>残った1本の罫が増殖して青の線スクリーンになり、OFFSET が線の太さで浮かぶ。ERROR が赤で刻印され、線スクリーン化してモアレになる</td></tr><tr><th scope="row">12.9–14.2</th><td>クライマックス。PERFECT / IS / BORING. の各行が、版ごとに遅れながらレールの上を滑り込んでくる</td></tr><tr><th scope="row">14.2</th><td>すべてが1コマで完全に見当合わせされる</td></tr><tr><th scope="row">14.2–16.3</th><td>PERFECT IS BORING. 静止。赤と青の正方形が隙間なく接している</td></tr><tr><th scope="row">16.3</th><td>赤の版が 0.36 だけずれる。文字の右に赤い線、2つの正方形の境に暗い重なりが出る</td></tr><tr><th scope="row">16.7–17.2</th><td>誤差がピリオドから波のように広がり、要らない文字は網点になって消える</td></tr><tr><th scope="row">17.25–18.5</th><td>植字機が MIS / REGIS / TERED を1文字ずつ組み、着地した文字から見当が合う。青の正方形はブロックに伸び、001 が刷られる</td></tr><tr><th scope="row">18.6–18.9</th><td>版が2回カチッと戻り、冒頭と同じ絵になって次のループへ</td></tr></tbody></table></div><h3>しくみ</h3><p>起動時に端末の書体をCanvas 2Dで描き、距離場（SDF）の文字アトラスを作ります。レイアウトは実際に測った字幅とカーニングから組むので、書体が変わっても構図が崩れません。</p><p>文字・罫・円・トンボはすべてGPUのインスタンス描画で、黒・赤・青の各版に書き込みます。書き込み先は「網点にかかるトーン」と「網点にかからない線画」の2枚で、抜き（ノックアウト）もここで処理します。</p><p>印刷パスでは、版ごとに見当（位置・回転）、スクリーン角度、線数、網点の形を持たせて刷ります。途中からはセルが覆うインク量で丸の大きさが決まるAM網点に切り替わり、文字が大きな丸の集まりに分解されます。インクは膜の厚さで光を吸う半透明の層として掛け合わせるので、赤と青の重なりは自然に暗い紫になります。濃度ムラ、かすれ、ドットゲイン、縁の荒れ、紙の繊維もコードで作っています。</p><p>動きはすべて時刻tの関数です。18.9秒以降と0秒は同じ関数で描く同じ絵で、継ぎ目は静止の真ん中にあります。余白のFRAMEとIMPRESSION（刷り枚数）はループで戻らず増え続けるので、数字からも継ぎ目は分かりません。</p></div></section>
+<section class="note-section" aria-labelledby="engineering-title"><h2 id="engineering-title">Engineering</h2><div class="prose"><p class="note">Zenn記事：なし</p><div class="links"><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/misregistered/opus-5-5/index.html">作品のソース ↗</a><a href="https://github.com/akkie8/ai-creative-lab/tree/main/experiments/misregistered/export">MP4書き出しツール ↗</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/misregistered/README.md">作品のREADME ↗</a></div><p>MP4はリポジトリに含めず、書き出しツールから作れます。1200コマを4Kで刷って1080pに縮め、Vermilion Wellと同じmacOS標準のAVFoundationでエンコードします。</p></div></section>
+<section class="note-section" aria-labelledby="distribution-title"><h2 id="distribution-title">Distribution</h2><div class="prose"><p class="note">X投稿：なし</p><a href="../../experiments/misregistered/opus-5-5/index.html">公開作品を開く ↗</a></div></section>
+<a class="back" href="../../index.html">← トップへ戻る</a>
+</main>
+    <footer class="site-footer"><span>AI Creative Lab / Experiments in AI, Interaction &amp; Creative Coding</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
+  </div>
+  <script src="../../assets/copy.js"></script>
+</body>
+</html>
