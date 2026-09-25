@@ -1,14 +1,72 @@
+<div align="center">
+
 # AI Creative Lab
 
-**Reproducible AI Creative Experiments — 再現可能なAIクリエイティブ研究ログ。**
+**Experiments in AI, Interaction & Creative Coding**
 
-同じプロンプトを異なるAIモデルに渡したとき、どんな作品が生まれるのか。作品だけでなく、プロンプト、生成条件、時間、トークン使用量、API換算コストを一緒に公開する個人の実験記録です。クリエイターやプロダクトエンジニアが、表現と制作に必要な時間・計算量を見比べ、同じ条件で追試できることを目指します。
+AI × Web で、何ができるかを実験する。
 
-**[ギャラリーを見る](https://akkie8.github.io/ai-creative-lab/)** · [プロンプト全文](prompt.md) · [実測データと集計方法](metrics.md)
+[**Gallery**](https://akkie8.github.io/ai-creative-lab/) · [Zenn](https://zenn.dev/aki1990) · [X](https://x.com/akiy_8)
 
-[![魔法使いの植物研究室：3モデルの比較](assets/comparison.jpg)](https://akkie8.github.io/ai-creative-lab/)
+[![Vermilion Well](assets/vermilion-well.png)](https://akkie8.github.io/ai-creative-lab/works/vermilion-well/)
 
-## Experiment 001 — Magical Botanical Laboratory
+</div>
+
+AI Creative Lab は、モデルでつくり、ブラウザで動かし、その結果を観察する個人の実験ラボです。作品はすべて生成されたHTMLのまま展示し、プロンプト・モデル・制作条件・計測値を一緒に公開します。同じ条件で追試し、実装や表現の違いを見比べられるように。記録のない数値は、記録のないまま残します。
+
+## Works
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/vermilion-well/"><img src="assets/vermilion-well.png" alt="Vermilion Well"></a><br><b>Vermilion Well</b><br><sub>Claude Opus 5.5 · 2026-09-25 · Motion graphics / WebGL2</sub></td>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-botanical-laboratory/"><img src="assets/moonlit-botanical-laboratory.png" alt="Moonlit Botanical Laboratory"></a><br><b>Moonlit Botanical Laboratory</b><br><sub>Claude Opus 5.5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-herbarium/"><img src="assets/moonlit-herbarium.png" alt="The Moonlit Herbarium"></a><br><b>The Moonlit Herbarium</b><br><sub>Claude Opus 5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/"><img src="assets/nocturnal-conservatory.png" alt="The Nocturnal Conservatory"></a><br><b>The Nocturnal Conservatory</b><br><sub>GPT-6 Astra · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/"><img src="assets/coral-reef.png" alt="サンゴ礁の一日"></a><br><b>サンゴ礁の一日 / Coral Reef Day</b><br><sub>Claude Opus 5.5 · 2026-09-23 · Pixel animation / Canvas 2D</sub></td>
+<td width="50%" valign="top"></td>
+</tr>
+</table>
+
+| 作品名 | モデル | 作成日 | 技法 | シリーズ |
+| --- | --- | --- | --- | --- |
+| [Vermilion Well](https://akkie8.github.io/ai-creative-lab/works/vermilion-well/) | Claude Opus 5.5（Claude Code） | 2026-09-25 | Motion graphics / WebGL2 / Shader / Single HTML | — |
+| [Moonlit Botanical Laboratory](https://akkie8.github.io/ai-creative-lab/works/moonlit-botanical-laboratory/) | Claude Opus 5.5 | 2026-09-24 | Pixel animation / Canvas 2D / Single HTML | Magical Botanical Laboratory |
+| [The Moonlit Herbarium](https://akkie8.github.io/ai-creative-lab/works/moonlit-herbarium/) | Claude Opus 5 | 2026-09-24 | Pixel animation / Canvas 2D / Single HTML | Magical Botanical Laboratory |
+| [The Nocturnal Conservatory](https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/) | GPT-6 Astra | 2026-09-24 | Pixel animation / Canvas 2D / Single HTML | Magical Botanical Laboratory |
+| [サンゴ礁の一日 / Coral Reef Day](https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/) | Claude Opus 5.5 | 2026-09-23 | Pixel animation / Canvas 2D / Single HTML | — |
+
+## The loop
+
+| Experiment → | Artifact → | Engineering → | Distribution |
+| --- | --- | --- | --- |
+| モデルで作る | Labに実物を公開 | Zennに作り方と違いを書く | Xに動画を出す |
+
+**Fields** — **Pixel Art** (4) · **Motion** (1) · Generative Art · 3D · Voice · Realtime UI · Agent UI · Character · Interactive Web · Visualization
+
+## Vermilion Well
+
+黒・朱・紙の3色でめぐる、15秒でループするモーショングラフィックス。HTML 1ファイル（434行・26,993 bytes）で、画像・動画・ライブラリは使わず、絵はすべてWebGL2のシェーダで毎フレーム計算しています。
+
+- [作品を開く](experiments/vermilion-well/opus-5-5/index.html) · [制作記録](https://akkie8.github.io/ai-creative-lab/works/vermilion-well/) · [プロンプトと出典](experiments/vermilion-well/prompt.md) · [作品のREADME](experiments/vermilion-well/README.md)
+- 作成日：2026-09-25。Claude Code（Opus 5.5）にプロンプトを1回送り、追加の指示はなし。Claude自身が撮影と修正を繰り返しています。
+- 生成時間 36分25秒 / モデル呼び出し 39回 / Input 7,541,527（うちキャッシュ読出し 7,282,290）/ Output 178,711 / Total 7,720,238 tokens。作品を作ったセッションのログから集計した値で、コンテキスト上限による自動要約1回を含みます。API換算コストは未算出です。
+- MP4はリポジトリに含めていません。[書き出しツール](experiments/vermilion-well/export/)で作り直せます。
+
+## サンゴ礁の一日
+
+Claude Opus 5.5が描いた、20秒で昼夜がめぐるサンゴ礁。320×180、30色パレット、Canvas 2Dの単一HTMLです。外部ライブラリ・画像はありません。
+
+- [作品を開く](experiments/coral-reef/opus-5-5/index.html) · [制作記録](https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/) · [生成プロンプトと追加指示](experiments/coral-reef/prompt.md)
+- 作成日：2026-09-23。別のClaudeとの対話でプロンプトを作成し、生成途中に「今更だけど20秒くらいのアニメーションでも充分」と追加指示を1回送っています。
+- 生成時間・トークン・コスト：記録なし。
+- 収録版は2026-09-25取得の[Vercel公開版](https://coral-reef-site.vercel.app/coral-reef.html)。実測472行・43,727 bytes。[Zenn記事](https://zenn.dev/peoplex_blog/articles/1bc5c181ad19f0)の470行・43,528 bytesとは差があります。
+- ギャラリーでは作品HTMLをiframeでそのまま表示しています。一覧のサムネイル `assets/coral-reef.png` は作品の画面を1920×1080（ドット6倍）で撮影したものです。
+
+## Magical Botanical Laboratory（同じプロンプト・3モデル）
 
 「魔法使いの植物研究室」をテーマにした、眺め続けられるピクセルアニメーション。同じ文章から生まれた3つの世界を、元のHTMLのまま展示しています。
 
@@ -58,20 +116,49 @@ API換算コストは**実際の請求額ではありません**。元報告で�
 ## ローカルで見る・追試する
 
 1. このリポジトリをダウンロードまたはcloneします。
-2. ルートの `index.html` をブラウザで開きます。カードから各作品へ移動できます。
-3. HTTPで確認する場合は、リポジトリ内で `python3 -m http.server 8000` を実行し、`http://localhost:8000` を開きます。
+2. リポジトリ内で `python3 -m http.server 8000` を実行し、`http://localhost:8000` を開きます。カードから各作品へ移動できます。
 
-追試する場合は、新しいセッションに [prompt.md](prompt.md) の全文を渡し、モデルと `high` を指定してください。完成まで人間から追加の指示・修正を行わず、最初の依頼から納品までの時間とusageを記録します。モデル名・実行環境・自動続行の有無も残してください。生成は確率的であり、同一出力を保証しません。
+Magical Botanical Laboratoryを追試する場合は、新しいセッションに [prompt.md](prompt.md) の全文を渡し、モデルと `high` を指定してください。完成まで人間から追加の指示・修正を行わず、最初の依頼から納品までの時間とusageを記録します。モデル名・実行環境・自動続行の有無も残してください。生成は確率的であり、同一出力を保証しません。
+
+## 作品の追加方法
+
+1. 既存の `works/<slug>/index.html` を複製し、作品・モデル・作成日・技法・条件・計測値・プロンプト・関連リンクを更新します。共通CSSは `assets/site.css` を使います。
+2. トップのIndexにカードを1つ追加します。HTML作品は `.media` 内に iframe でそのまま埋め込み、画像や動画の作品は `<img>` / `<video>` を置きます。必要に応じてFeaturedも更新します。
+3. 作品HTMLをそのまま収録し、`shasum -a 256 <作品HTML>` の出力を `checksums.sha256` に追記します。READMEの作品一覧も更新します。
+4. ローカルサーバーで相対リンクと表示を確認し、`shasum -a 256 -c checksums.sha256` を実行します。
 
 ## 構成
 
 ```text
-index.html                              # Gallery
-prompt.md                               # 共通プロンプト全文
-metrics.md                              # 使用量・換算前提・データの限界
+index.html                              # Featured / Index / Fields / About
+assets/
+  site.css                              # 6ページ共通CSS
+  pixel-fit.js                          # サンゴ礁の整数倍表示
+  copy.js                               # プロンプトのコピー
+  vermilion-well.png
+  coral-reef.png
+  moonlit-botanical-laboratory.png
+  moonlit-herbarium.png
+  nocturnal-conservatory.png
+  *.jpg                                 # 既存の比較素材・OGP
+works/
+  vermilion-well/index.html
+  moonlit-botanical-laboratory/index.html
+  moonlit-herbarium/index.html
+  nocturnal-conservatory/index.html
+  coral-reef-day/index.html
+prompt.md                               # 植物研究室の共通プロンプト全文
+metrics.md                              # 植物研究室の計測記録・換算前提
 README.md
-checksums.sha256                        # 3作品のSHA-256
-assets/                                 # 作品プレビュー
+checksums.sha256                        # 5作品のSHA-256
+experiments/vermilion-well/
+  README.md
+  prompt.md
+  opus-5-5/index.html                    # 作品原本
+  export/                               # Python + SwiftのMP4書き出しツール
+experiments/coral-reef/
+  prompt.md
+  opus-5-5/index.html                    # 作品原本
 experiments/magical-botanical-laboratory/
   astra/index.html
   opus-5/index.html
@@ -82,10 +169,18 @@ experiments/magical-botanical-laboratory/
 
 ## 原本とプレビュー
 
-`checksums.sha256` は元の添付HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
+`checksums.sha256` は植物研究室の元の添付HTML、サンゴ礁とVermilion Wellの収録HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
 
-プレビュー画像は別途作成した比較素材を使用しています。各作品の表示領域は640×480 CSS px、表示倍率100%、devicePixelRatio 1、reduced-motionはno-preference。Chromiumの共通仮想時計で64msのウォームアップ後、12秒時点を撮影したものです。単体画像にはモデル名と生成時間のラベルを加えています。乱数は固定していないため、再読込時のイベントは一致しない場合があります。画像のラベルやギャラリーの装飾は作品本体には含まれません。
+既存の植物研究室のJPEG画像は別途作成した比較素材です。各作品の表示領域は640×480 CSS px、表示倍率100%、devicePixelRatio 1、reduced-motionはno-preference。Chromiumの共通仮想時計で64msのウォームアップ後、12秒時点を撮影したものです。単体画像にはモデル名と生成時間のラベルを加えています。乱数は固定していないため、再読込時のイベントは一致しない場合があります。画像のラベルやギャラリーの装飾は作品本体には含まれません。
+
+一覧用の植物研究室のPNGは、作品を960×540 CSS px・deviceScaleFactor 2で開き、読み込み後3秒待って1920×1080で撮影しています。詳細ページでは、作品HTMLを4:3のiframeでそのまま表示します。
 
 ## 公開範囲
 
 本リポジトリは作品・条件・実測報告を閲覧し、実験内容を検証するための公開アーカイブです。現時点では再配布・改変に関するライセンスは設定していません。
+
+## Author
+
+**Aki** — Product Engineer @ PeopleX<br>
+Building AI products · Creative Coding · AI Experiments<br>
+所属：[株式会社PeopleX](https://corp.peoplex.jp/) · [Zenn](https://zenn.dev/aki1990) · [X](https://x.com/akiy_8) · [GitHub](https://github.com/akkie8)

@@ -3,3 +3,5 @@
 work/
 node_modules/
 __pycache__/
+*.mp4
+experiments/vermilion-well/export/enc

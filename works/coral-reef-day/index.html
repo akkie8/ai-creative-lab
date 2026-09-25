@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>サンゴ礁の一日 — AI Creative Lab</title>
+  <meta name="description" content="AI × Web の実験。Claude Opus 5.5で単一HTMLのCanvasアニメーションを制作し、生き物同士の反応を観察。プロンプトと追加指示1回を記録します。">
+  <link rel="canonical" href="https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:title" content="サンゴ礁の一日 — AI Creative Lab">
+  <meta property="og:description" content="AI × Web の実験。Claude Opus 5.5で単一HTMLのCanvasアニメーションを制作し、生き物同士の反応を観察。プロンプトと追加指示1回を記録します。">
+  <meta property="og:url" content="https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/">
+  <meta property="og:image" content="https://akkie8.github.io/ai-creative-lab/assets/ogp.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">作品と実験記録へ</a>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../../index.html">AI Creative Lab</a>
+      <nav aria-label="メインナビゲーション"><a href="../../index.html#experiments">Experiments</a><a href="../../index.html#about">About</a><a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a></nav>
+    </header>
+    <main id="main">
+<section class="hero"><p class="eyebrow">Claude Opus 5.5 · 2026-09-23</p><h1>サンゴ礁の一日</h1><p class="subtitle">Coral Reef Day — 20秒でめぐる、小さな海の生態系。</p></section>
+<section class="note-section" aria-labelledby="question-title"><h2 id="question-title">Question<br>問い</h2><div class="prose"><p>1つのプロンプトから、単一HTMLのCanvasアニメーションとしてどこまで作れるか。</p></div></section>
+<section class="exhibition" aria-labelledby="work-title">
+  <div class="section-head"><h2 id="work-title">The work</h2><span>CLAUDE OPUS 5.5 / 2026</span></div>
+  <div class="media fit"><iframe data-pixel="320x180" src="../../experiments/coral-reef/opus-5-5/index.html" title="サンゴ礁の一日（作品のHTMLをそのまま表示）"></iframe><a class="preview-open" href="../../experiments/coral-reef/opus-5-5/index.html"><span>作品を開く ↗</span></a></div>
+  <div class="label"><div><h3>Coral Reef Day</h3><p>サンゴ礁の一日</p><a class="button" href="../../experiments/coral-reef/opus-5-5/index.html">作品を開く <span aria-hidden="true">↗</span></a></div><div><dl><div><dt>Model</dt><dd>Claude Opus 5.5</dd></div><div><dt>Created</dt><dd>2026-09-23</dd></div><div><dt>Dimensions</dt><dd>320 × 180 px（内部解像度）</dd></div><div><dt>Palette / cycle</dt><dd>30色 / 昼夜1周20秒</dd></div></dl><ul class="tags" aria-label="技法"><li>Pixel animation</li><li>Canvas 2D</li><li>Single HTML</li></ul></div></div>
+  <p class="note">上の画面は作品のHTMLをそのまま埋め込んだものです。クリックしてからDキーを押すとデバッグ表示が出ます。</p>
+</section>
+<section class="note-section" aria-labelledby="conditions-title"><h2 id="conditions-title">Conditions<br>制作条件</h2><div class="prose"><p>生成用のプロンプトは、別のClaudeとの対話で作成しました。最初のプロンプトのあとに<strong>追加指示を1回</strong>送り、昼夜の周期を90秒から20秒へ変更しています。</p><p>HTML / CSS / JavaScript を単一HTMLに収録。外部ライブラリ・外部画像はありません。Canvas 2Dの補間を切り、低解像度の描画を整数倍で拡大しています。</p><p class="note">収録版は2026-09-25に取得したVercel公開版です。作品本体のHTMLは改変せず保存しています。</p></div></section>
+<section class="note-section" aria-labelledby="metrics-title"><h2 id="metrics-title">Measurements<br>計測値</h2><div class="prose"><dl><div><dt>生成時間</dt><dd>記録なし</dd></div><div><dt>トークン</dt><dd>記録なし</dd></div><div><dt>コスト</dt><dd>記録なし</dd></div><div><dt>収録HTMLの行数</dt><dd>472行</dd></div><div><dt>収録HTMLのサイズ</dt><dd>43,727 bytes</dd></div></dl><p class="note">行数・サイズは収録版の実測値です。Zenn記事に書かれている470行・43,528 bytesとは差があります。収録しているのはVercelの公開版です。</p></div></section>
+<section class="note-section" aria-labelledby="prompt-title"><h2 id="prompt-title">Prompt<br>生成プロンプト</h2><div class="prose"><p>出典：<a href="https://zenn.dev/peoplex_blog/articles/1bc5c181ad19f0">Zenn記事に掲載されたプロンプト</a>。</p><p>掲載にあたり、一部を省略しています。</p><pre># 依頼
+ピクセルアートの「サンゴ礁の一日」アニメーションを、単一のHTMLファイル（Canvas）で実装してください。
+眺めているだけで驚きがあるくらい、生き物の数と動きの種類を多くしてください。
+
+# 世界観
+- 浅い海のサンゴ礁を横から見た断面構図。上部に水面、下部に砂地とサンゴ、岩場
+- 雰囲気は「にぎやかで情報量多め」。画面のどこを見ても何かが動いている状態にする
+- 時間が流れ、朝→昼→夕→夜→朝とループする（1周90秒程度）
+  - 昼：水面から光の筋（コースティクス）が差し込み、色鮮やか
+  - 夕：全体が橙色に寄る
+  - 夜：暗くなり、クラゲや夜光プランクトンが発光する。昼の魚は岩陰で休み、夜行性の生き物が出てくる
+
+# 生き物（それぞれ独自のルールで自律的に動くこと）
+- 小魚の群れ：ボイド（分離・整列・結合）で群泳する。複数の群れを配置
+- サメ（1〜2匹）：ゆっくり巡回し、ときどき群れに近づく。近づかれた群れは散開して逃げ、しばらくすると再集結する
+- クマノミ：イソギンチャクの周りを離れず、危険が近づくと中に隠れる
+- ウミガメ：画面をゆったり横断し、たまに水面へ息継ぎに上がる
+- カニ・エビ：砂地を横歩きし、ときどき砂をつつく
+- タコ：岩場を移動し、サメが近いと体色を岩と同じ色に変える
+- エイ：砂地すれすれを滑空し、砂煙を上げる
+- クラゲ：拍動しながら漂う。夜に発光
+- そのほか、泡、揺れる海藻、漂う粒子など背景の動き
+- 生き物同士の反応（逃げる・隠れる・追う）が見えるようにし、同じ光景が二度と繰り返されないようにする
+
+# ピクセルアートの表現
+- 内部解像度は低く（例：320×180）描画し、画面サイズまで整数倍で拡大。補間はオフ（image-rendering: pixelated、imageSmoothingEnabled = false）
+- 限られたパレット（32色前後）で統一感を出す
+- スプライトは画像ファイルを使わず、コード内のドット配列やプロシージャル生成で作る
+- 各生き物に数フレームのアニメーション（ヒレの動き、拍動など）をつける
+- 奥行きを出すため、背景・中景・前景の3層程度で描き分け、奥ほど色を青く薄くする
+
+# 技術要件
+- 外部ライブラリ・外部ファイルなし。HTML1ファイルで完結し、ブラウザで開くだけで動く
+- requestAnimationFrameで60fpsを保つ。生き物の数が多くても重くならないよう工夫する
+- アスペクト比16:9。ウィンドウサイズに合わせて中央に配置し、余白は黒
+- 開いた瞬間から見栄えがよい状態で始まる（生き物がすでに配置されている）
+- 録画の邪魔になるUIは一切表示しない。キー操作（例：Dキー）で生き物の数やFPSを出すデバッグ表示だけ用意してよい
+
+# 仕上げ
+- 実装後、コードを見直して、動きの不自然な点や、止まって見える領域がないか確認し、改善してから最終版を出してください
+- 最後に、実装した生き物と挙動の一覧を簡潔に添えてください</pre><h3>追加指示（1回）</h3><pre>今更だけど20秒くらいのアニメーションでも充分</pre><p class="note">最初のプロンプト中の「1周90秒程度」は当初の指定です。現在の作品は、この追加指示を反映した20秒周期です。</p><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/coral-reef/prompt.md">プロンプトをMarkdownで開く ↗</a></div></section>
+<section class="note-section" aria-labelledby="notes-title"><h2 id="notes-title">Observations<br>観察</h2><div class="prose"><p>題材や表現、動きのルールを文章で伝え、外部ライブラリや画像素材を使わずに、生き物同士が反応する単一HTMLのアニメーションが生成されました。小魚がサメから逃げて再び集まり、夜には岩陰へ移動するなど、個別の動きが周囲の状況と結びついています。</p><p><strong>1件だけの検証のため、生成結果の再現性は判断できません。</strong></p><h3>小さな生態系</h3><p>小魚は3つの群れ、計54匹。サメが近づくと散開し、しばらくすると再集合します。夜になると岩陰へ移動。クマノミはイソギンチャクに隠れ、ウミガメは水面へ息継ぎに上がります。</p><p>カニ、エビ、タコ、エイ、クラゲ、チョウチョウウオも登場します。砂煙、泡、揺れる海藻、夜の発光まで、周囲の動きと反応がつながっています。</p><h3>Claudeが加えたもの</h3><p>指定になかったウツボ、7匹のチンアナゴ、12匹のヒカリキンメを追加。タコは擬態するだけでなく、サメの接近時に墨を吐きます。</p><h3>観察の手がかり</h3><p>地形は固定シードで再現され、生き物の初期値と行動は再読込ごとに変わります。開始前には3秒分の先行シミュレーションがあり、開いた瞬間から群れが動いています。</p><p>作品で<strong>Dキー</strong>を押すと、FPS、時刻、生き物の数や状態を表示できます。もう一度押すと閉じます。</p></div></section>
+<section class="note-section" aria-labelledby="engineering-title"><h2 id="engineering-title">Engineering</h2><div class="prose links"><a href="https://zenn.dev/peoplex_blog/articles/1bc5c181ad19f0">Zenn記事 ↗</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/coral-reef/opus-5-5/index.html">ソース ↗</a></div></section>
+<section class="note-section" aria-labelledby="distribution-title"><h2 id="distribution-title">Distribution</h2><div class="prose links"><a href="https://x.com/akiy_8/status/2102545213218803769">X投稿 ↗</a><a href="https://coral-reef-site.vercel.app">公開サイト ↗</a><a href="https://coral-reef-site.vercel.app/coral-reef.html">収録元HTML ↗</a></div></section>
+<a class="back" href="../../index.html">← トップへ戻る</a>
+</main>
+    <footer class="site-footer"><span>AI Creative Lab / Experiments in AI, Interaction &amp; Creative Coding</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
+  </div>
+  <script src="../../assets/pixel-fit.js"></script>
+  <script src="../../assets/copy.js"></script>
+</body>
+</html>

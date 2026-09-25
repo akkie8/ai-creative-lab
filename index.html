@@ -3,200 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Creative Lab — 3つの小さな世界</title>
-  <meta name="description" content="同じプロンプトから生まれた、3つの魔法の植物研究室。AIが生成した作品と、プロンプト・実行条件・数値を公開するクリエイティブ実験の記録。">
+  <title>AI Creative Lab — AI × Web の実験ラボ</title>
+  <meta name="description" content="AI × Web で何ができるかを実験するラボ。実物、プロンプト、モデル、条件、計測値を公開し、実装と観察を記録します。">
   <link rel="canonical" href="https://akkie8.github.io/ai-creative-lab/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ja_JP">
-  <meta property="og:title" content="AI Creative Lab — 同じプロンプトから、3つの小さな世界。">
-  <meta property="og:description" content="Reproducible AI Creative Experiments. 3つの作品と、その生成過程をたどる実験記録。">
+  <meta property="og:title" content="AI Creative Lab — AI × Web の実験ラボ">
+  <meta property="og:description" content="AI × Web で何ができるかを実験するラボ。実物、プロンプト、モデル、条件、計測値を公開し、実装と観察を記録します。">
   <meta property="og:url" content="https://akkie8.github.io/ai-creative-lab/">
   <meta property="og:image" content="https://akkie8.github.io/ai-creative-lab/assets/ogp.jpg">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="theme-color" content="#111b17">
-  <style>
-    :root { color-scheme: dark; --bg: #111b17; --paper: #f1f1e5; --muted: #b1bcb0; --line: #35463a; --lime: #d6ed9a; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--paper); font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; line-height: 1.8; }
-    a { color: inherit; text-underline-offset: .3em; }
-    a:hover { color: var(--lime); }
-    a:focus-visible { outline: 3px solid var(--lime); outline-offset: 6px; }
-    .wrap { max-width: 1360px; margin: auto; padding-inline: 48px; }
-    .skip { position: absolute; top: -80px; left: 20px; z-index: 1; padding: 8px 16px; background: var(--lime); color: var(--bg); }
-    .skip:focus { top: 12px; }
-    header { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding-block: 28px; border-bottom: 1px solid var(--line); }
-    .brand { font-size: 20px; font-weight: 650; letter-spacing: -.04em; }
-    .brand::before { content: "✳"; display: inline-block; margin-right: 12px; color: var(--lime); font-size: 26px; vertical-align: -2px; }
-    nav { display: flex; gap: 26px; font-size: 12px; }
-    nav a { text-decoration: none; }
-    .hero { padding-block: 66px 48px; }
-    .eyebrow { margin: 0 0 24px; color: var(--lime); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; }
-    h1 { margin: 0; font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; font-size: clamp(32px, 3.4vw, 49px); font-weight: 500; line-height: 1.55; letter-spacing: .035em; }
-    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-top: 24px; }
-    .intro p { margin: 0; color: var(--muted); font-size: 14px; }
-    .conditions { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-    .conditions li { padding: 5px 11px; border: 1px solid var(--line); border-radius: 2px; color: var(--lime); font-size: 11px; white-space: nowrap; }
-    .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 16px; border-top: 1px solid var(--line); }
-    .section-head h2 { margin: 0; font-size: 15px; font-weight: 500; }
-    .section-head span { color: var(--muted); font-family: monospace; font-size: 11px; letter-spacing: .06em; }
-    .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; }
-    article { min-width: 0; }
-    .preview { display: block; background: #090d11; }
-    .preview img { display: block; width: 100%; height: auto; aspect-ratio: 1; }
-    .card-heading { display: flex; align-items: baseline; gap: 12px; margin-top: 23px; }
-    .number { color: var(--lime); font-family: monospace; font-size: 11px; }
-    h3 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -.035em; }
-    dl { margin: 18px 0 0; font-variant-numeric: tabular-nums; }
-    dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding-block: 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
-    dt { color: var(--muted); }
-    dd { margin: 0; text-align: right; }
-    .time { font-size: 19px; }
-    .detail { min-height: 44px; margin: 12px 0 18px; color: var(--muted); font-size: 11px; }
-    .actions { display: flex; align-items: center; gap: 20px; }
-    .visit { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; background: var(--lime); color: var(--bg); font-size: 13px; text-decoration: none; }
-    .visit:hover { background: #e6fac0; color: var(--bg); }
-    .source { font-size: 12px; }
-    .footnote { margin: 25px 0 0; color: var(--muted); font-size: 11px; }
-    .notes { display: grid; grid-template-columns: 1fr 2fr; gap: 48px; margin-top: 66px; padding-block: 32px 40px; border-top: 1px solid var(--line); }
-    .notes .eyebrow { margin-bottom: 10px; }
-    .notes h2 { margin: 0; font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; font-size: 25px; font-weight: 500; }
-    .notes-body p { margin: 0 0 15px; color: var(--muted); font-size: 13px; }
-    .notes-body strong { color: var(--paper); font-weight: 500; }
-    .documents { display: flex; flex-wrap: wrap; gap: 12px 26px; margin-top: 24px; font-size: 12px; }
-    footer { display: flex; justify-content: space-between; gap: 20px; padding-block: 22px 30px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
-    @media (max-width: 1000px) {
-      .wrap { padding-inline: 28px; }
-      .intro { display: block; }
-      .conditions { margin-top: 24px; }
-      .gallery { gap: 18px; }
-      h3 { font-size: 19px; }
-      .actions { gap: 12px; }
-      .visit { padding-inline: 10px; }
-    }
-    @media (max-width: 700px) {
-      .wrap { padding-inline: 22px; }
-      header { padding-block: 19px; gap: 12px; }
-      .brand { font-size: 18px; }
-      nav { gap: 14px; font-size: 11px; }
-      .hero { padding-block: 43px 35px; }
-      .eyebrow { font-size: 10px; letter-spacing: .1em; }
-      h1 { font-size: 31px; }
-      .intro p { font-size: 13px; }
-      .conditions { gap: 6px; }
-      .conditions li { padding-inline: 8px; }
-      .section-head { align-items: flex-start; }
-      .section-head h2 { max-width: 240px; font-size: 13px; }
-      .section-head span { white-space: nowrap; font-size: 10px; }
-      .gallery { grid-template-columns: 1fr; gap: 44px; }
-      h3 { font-size: 23px; }
-      .card-heading { margin-top: 19px; }
-      .detail { min-height: 0; }
-      .visit { padding: 13px 16px; }
-      .actions { gap: 22px; }
-      .notes { grid-template-columns: 1fr; gap: 24px; margin-top: 44px; }
-      footer { flex-direction: column; gap: 5px; }
-    }
-  </style>
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
   <a class="skip" href="#main">作品と実験記録へ</a>
   <div class="wrap">
-    <header>
-      <div class="brand">AI Creative Lab</div>
-      <nav aria-label="メインナビゲーション">
-        <a href="#notes">実験ノート</a>
-        <a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a>
-      </nav>
+    <header class="site-header">
+      <a class="brand" href="index.html">AI Creative Lab</a>
+      <nav aria-label="メインナビゲーション"><a href="index.html#experiments">Experiments</a><a href="index.html#about">About</a><a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a></nav>
     </header>
     <main id="main">
-      <section class="hero" aria-labelledby="title">
-        <p class="eyebrow">Reproducible AI Creative Experiments</p>
-        <h1 id="title">同じプロンプトから、<br>3つの小さな世界。</h1>
-        <div class="intro">
-          <p>お題は「魔法の植物研究室」。<br>3つのモデルが描いた作品を、生成の記録とともに。</p>
-          <ul class="conditions" aria-label="実験条件">
-            <li>同一プロンプト</li><li>High</li><li>One-shot</li><li>Human edits 0</li>
-          </ul>
-        </div>
-      </section>
-      <section aria-labelledby="collection-title">
-        <div class="section-head">
-          <h2 id="collection-title">Magical Botanical Laboratory</h2>
-          <span>EXPERIMENT 001 / 3 WORKS</span>
-        </div>
-        <div class="gallery">
-          <article aria-labelledby="astra-title">
-            <a class="preview" href="experiments/magical-botanical-laboratory/astra/index.html" aria-label="GPT-6 Astra の動く作品を見る">
-              <img src="assets/astra.jpg" width="640" height="640" alt="GPT-6 Astraの魔法の植物研究室。丸い窓の前にピンクの花が浮かび、植物や本が棚に並ぶ。">
-            </a>
-            <div class="card-heading"><span class="number">01</span><h3 id="astra-title">GPT-6 Astra</h3></div>
-            <dl>
-              <div><dt>生成時間</dt><dd class="time">9m 30s</dd></div>
-              <div><dt>Total tokens</dt><dd>700,002</dd></div>
-              <div><dt>API換算（参考）</dt><dd>約 $1.98</dd></div>
-              <div><dt>HTML行数（配布実測）</dt><dd>195行</dd></div>
-            </dl>
-            <p class="detail">行数は元報告196行、配布HTML実測195行。</p>
-            <div class="actions">
-              <a class="visit" href="experiments/magical-botanical-laboratory/astra/index.html" aria-label="GPT-6 Astra の動く作品を見る">動く作品を見る <span aria-hidden="true">↗</span></a>
-              <a class="source" href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/magical-botanical-laboratory/astra/index.html" aria-label="GPT-6 Astra のソース">ソース ↗</a>
-            </div>
-          </article>
-          <article aria-labelledby="opus5-title">
-            <a class="preview" href="experiments/magical-botanical-laboratory/opus-5/index.html" aria-label="Claude Opus 5 の動く作品を見る">
-              <img src="assets/opus-5.jpg" width="640" height="640" alt="Claude Opus 5の魔法の植物研究室。月明かりの窓とろうそくに照らされた机に、光る植物と色とりどりの瓶が並ぶ。">
-            </a>
-            <div class="card-heading"><span class="number">02</span><h3 id="opus5-title">Claude Opus 5</h3></div>
-            <dl>
-              <div><dt>生成時間</dt><dd class="time">17m 28s</dd></div>
-              <div><dt>Total tokens</dt><dd>3,352,267</dd></div>
-              <div><dt>API換算（参考）</dt><dd>約 $4.57</dd></div>
-              <div><dt>HTML行数</dt><dd>1,292行</dd></div>
-            </dl>
-            <p class="detail">実行条件・数値の内訳は Metrics に記録。</p>
-            <div class="actions">
-              <a class="visit" href="experiments/magical-botanical-laboratory/opus-5/index.html" aria-label="Claude Opus 5 の動く作品を見る">動く作品を見る <span aria-hidden="true">↗</span></a>
-              <a class="source" href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/magical-botanical-laboratory/opus-5/index.html" aria-label="Claude Opus 5 のソース">ソース ↗</a>
-            </div>
-          </article>
-          <article aria-labelledby="opus55-title">
-            <a class="preview" href="experiments/magical-botanical-laboratory/opus-5-5/index.html" aria-label="Claude Opus 5.5 の動く作品を見る">
-              <img src="assets/opus-5-5.jpg" width="640" height="640" alt="Claude Opus 5.5の魔法の植物研究室。星空のアーチ窓を背景に、ガラスの中でピンクの花が光る。">
-            </a>
-            <div class="card-heading"><span class="number">03</span><h3 id="opus55-title">Claude Opus 5.5</h3></div>
-            <dl>
-              <div><dt>生成時間</dt><dd class="time">45m 52s</dd></div>
-              <div><dt>Total tokens</dt><dd>5,031,232</dd></div>
-              <div><dt>API換算（参考）</dt><dd>約 $7.27</dd></div>
-              <div><dt>HTML行数</dt><dd>730行</dd></div>
-            </dl>
-            <p class="detail">出力上限後の自動続行1回を含む。</p>
-            <div class="actions">
-              <a class="visit" href="experiments/magical-botanical-laboratory/opus-5-5/index.html" aria-label="Claude Opus 5.5 の動く作品を見る">動く作品を見る <span aria-hidden="true">↗</span></a>
-              <a class="source" href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/magical-botanical-laboratory/opus-5-5/index.html" aria-label="Claude Opus 5.5 のソース">ソース ↗</a>
-            </div>
-          </article>
-        </div>
-        <p class="footnote">API料金は元報告の単価前提による参考換算です。実請求額ではありません。</p>
-      </section>
-      <section class="notes" id="notes" aria-labelledby="notes-title">
-        <div>
-          <p class="eyebrow">Field notes / 001</p>
-          <h2 id="notes-title">作品と、その条件を残す。</h2>
-        </div>
-        <div class="notes-body">
-          <p><strong>それぞれ1試行の観察記録です。</strong>モデル一般の性能や順位を示すものではありません。同じ High 設定でも、計算量や実行ツールが同一とは限りません。</p>
-          <p><strong>One-shot は、初回以降に人間の追加指示がないこと。</strong>モデル自身による複数の呼び出し・検証・修正は含みます。Claude Opus 5.5 は、出力上限後の自動続行1回を含みます。</p>
-          <p><strong>Human edits 0：原HTMLは改変していません。</strong>作品はそれぞれのページで開きます。この一覧へはブラウザの「戻る」で戻れます。プロンプト全文と数値の詳細は、以下の記録からたどれます。</p>
-          <div class="documents" aria-label="実験の資料">
-            <a href="https://github.com/akkie8/ai-creative-lab/blob/main/prompt.md">Prompt / プロンプト ↗</a>
-            <a href="https://github.com/akkie8/ai-creative-lab/blob/main/metrics.md">Metrics / 数値の詳細 ↗</a>
-            <a href="https://github.com/akkie8/ai-creative-lab/blob/main/README.md">README / 実験について ↗</a>
-          </div>
-        </div>
-      </section>
-    </main>
-    <footer><span>AI Creative Lab · Reproducible AI Creative Experiments</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
+<section class="hero hero-home">
+  <p class="eyebrow">AI × Web / An experimental lab</p>
+  <h1>AI × Web で、<br><span class="phrase">何ができるかを</span><span class="phrase">実験する。</span></h1>
+  <p class="subtitle">Experiments in AI, Interaction &amp; Creative Coding</p>
+</section>
+<section class="exhibition" aria-labelledby="latest-title">
+  <div class="section-head"><h2 id="latest-title">Featured</h2><span>CLAUDE OPUS 5.5 / 2026</span></div>
+  <div class="media"><iframe src="experiments/vermilion-well/opus-5-5/index.html" title="Vermilion Well（作品のHTMLをそのまま表示）" allow="fullscreen"></iframe></div>
+  <div class="label"><div><h3>Vermilion Well</h3><p>15-second motion graphics</p><a class="button" href="works/vermilion-well/index.html">作品と制作記録を見る ↗</a></div><div><dl><div><dt>Model</dt><dd>Claude Opus 5.5（Claude Code）</dd></div><div><dt>Created</dt><dd>2026-09-25</dd></div><div><dt>Format</dt><dd>15秒ループ / WebGL2 / Single HTML</dd></div></dl><ul class="tags" aria-label="技法"><li>Motion graphics</li><li>WebGL2</li><li>Shader</li><li>Single HTML</li></ul></div></div>
+</section>
+<section class="index" id="experiments" aria-labelledby="index-title">
+  <div class="section-head"><h2 id="index-title">Index</h2><span>05 WORKS</span></div>
+<article class="index-card"><a class="media" href="works/vermilion-well/index.html"><img src="assets/vermilion-well.png" width="1920" height="1080" loading="lazy" alt="朱色を背景に黒と紙色の球が群れになって浮かぶVermilion Wellの4.4秒時点。"></a><div class="index-copy"><h3><a href="works/vermilion-well/index.html">Vermilion Well</a></h3><ul class="tags" aria-label="技法"><li>Motion graphics</li><li>WebGL2</li><li>Shader</li><li>Single HTML</li></ul></div><div class="index-meta"><p>Claude Opus 5.5（Claude Code）<br><time datetime="2026-09-25">2026-09-25</time></p><a href="works/vermilion-well/index.html">作品と制作記録 ↗</a></div></article>
+<article class="index-card"><a class="media" href="works/moonlit-botanical-laboratory/index.html"><img src="assets/moonlit-botanical-laboratory.png" width="1920" height="1080" loading="lazy" alt="Claude Opus 5.5が描いたMoonlit Botanical Laboratory。"></a><div class="index-copy"><h3><a href="works/moonlit-botanical-laboratory/index.html">Moonlit Botanical Laboratory</a></h3><p class="note">Series: Magical Botanical Laboratory</p><ul class="tags" aria-label="技法"><li>Pixel animation</li><li>Canvas 2D</li><li>Single HTML</li></ul></div><div class="index-meta"><p>Claude Opus 5.5<br><time datetime="2026-09-24">2026-09-24</time></p><a href="works/moonlit-botanical-laboratory/index.html">作品と制作記録 ↗</a></div></article>
+<article class="index-card"><a class="media" href="works/moonlit-herbarium/index.html"><img src="assets/moonlit-herbarium.png" width="1920" height="1080" loading="lazy" alt="Claude Opus 5が描いたThe Moonlit Herbarium。"></a><div class="index-copy"><h3><a href="works/moonlit-herbarium/index.html">The Moonlit Herbarium</a></h3><p class="note">Series: Magical Botanical Laboratory</p><ul class="tags" aria-label="技法"><li>Pixel animation</li><li>Canvas 2D</li><li>Single HTML</li></ul></div><div class="index-meta"><p>Claude Opus 5<br><time datetime="2026-09-24">2026-09-24</time></p><a href="works/moonlit-herbarium/index.html">作品と制作記録 ↗</a></div></article>
+<article class="index-card"><a class="media" href="works/nocturnal-conservatory/index.html"><img src="assets/nocturnal-conservatory.png" width="1920" height="1080" loading="lazy" alt="GPT-6 Astraが描いたThe Nocturnal Conservatory。"></a><div class="index-copy"><h3><a href="works/nocturnal-conservatory/index.html">The Nocturnal Conservatory</a></h3><p class="note">Series: Magical Botanical Laboratory</p><ul class="tags" aria-label="技法"><li>Pixel animation</li><li>Canvas 2D</li><li>Single HTML</li></ul></div><div class="index-meta"><p>GPT-6 Astra<br><time datetime="2026-09-24">2026-09-24</time></p><a href="works/nocturnal-conservatory/index.html">作品と制作記録 ↗</a></div></article>
+<article class="index-card"><a class="media" href="works/coral-reef-day/index.html"><img src="assets/coral-reef.png" width="1920" height="1080" loading="lazy" alt="青い海と色鮮やかなサンゴの間を小魚やウミガメが泳ぐ。"></a><div class="index-copy"><h3><a href="works/coral-reef-day/index.html">サンゴ礁の一日</a></h3><p class="note">Coral Reef Day</p><ul class="tags" aria-label="技法"><li>Pixel animation</li><li>Canvas 2D</li><li>Single HTML</li></ul></div><div class="index-meta"><p>Claude Opus 5.5<br><time datetime="2026-09-23">2026-09-23</time></p><a href="works/coral-reef-day/index.html">作品と制作記録 ↗</a></div></article>
+</section>
+<section class="note-section" aria-labelledby="fields-title">
+  <h2 id="fields-title">Fields<br>研究分野</h2>
+  <ul class="fields" aria-label="研究分野と作品数">
+    <li class="field-active">Pixel Art <span>4 works</span></li>
+    <li>Generative Art</li><li>3D</li><li class="field-active">Motion <span>1 work</span></li><li>Voice</li><li>Realtime UI</li><li>Agent UI</li><li>Character</li><li>Interactive Web</li><li>Visualization</li>
+  </ul>
+</section>
+<section class="note-section" id="about" aria-labelledby="about-title">
+  <h2 id="about-title">About the lab</h2>
+  <div class="prose">
+    <p>AI × Web で、何ができるかを実験する。AI Creative Lab は、モデルでつくり、ブラウザで動かし、その結果を観察する個人の実験ラボです。</p>
+    <p>実物と一緒にプロンプト、モデル、制作条件、計測値を公開します。同じ条件で追試し、実装や表現の違いを見比べられるように。記録のない数値は、記録のないまま残します。</p>
+    <h3>The loop</h3>
+    <ol class="loop">
+      <li><strong>Experiment <span aria-hidden="true">→</span></strong><span>モデルで作る</span></li>
+      <li><strong>Artifact <span aria-hidden="true">→</span></strong><span>Labに実物を公開</span></li>
+      <li><strong>Engineering <span aria-hidden="true">→</span></strong><span>Zennに作り方と違いを書く</span></li>
+      <li><strong>Distribution</strong><span>Xに動画を出す</span></li>
+    </ol>
+    <div class="links"><a href="https://github.com/akkie8/ai-creative-lab/blob/main/README.md">ラボの記録</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/checksums.sha256">作品のSHA-256</a></div>
+    <div class="author">
+      <h3>Aki — Product Engineer @ PeopleX</h3>
+      <p class="note">Building AI products · Creative Coding · AI Experiments</p>
+      <p class="note">所属：<a href="https://corp.peoplex.jp/">株式会社PeopleX ↗</a></p>
+      <div class="links"><a href="https://zenn.dev/aki1990">Zenn ↗</a><a href="https://x.com/akiy_8">X ↗</a><a href="https://github.com/akkie8">GitHub ↗</a></div>
+    </div>
+  </div>
+</section>
+</main>
+    <footer class="site-footer"><span>AI Creative Lab / Experiments in AI, Interaction &amp; Creative Coding</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
   </div>
 </body>
 </html>

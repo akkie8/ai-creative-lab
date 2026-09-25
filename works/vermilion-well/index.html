@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vermilion Well — AI Creative Lab</title>
+  <meta name="description" content="Claude Opus 5.5（Claude Code）が作る15秒のWebGL2モーショングラフィックス。実物、制作条件、プロンプトと観察の記録。">
+  <link rel="canonical" href="https://akkie8.github.io/ai-creative-lab/works/vermilion-well/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:title" content="Vermilion Well — AI Creative Lab">
+  <meta property="og:description" content="Claude Opus 5.5（Claude Code）が作る15秒のWebGL2モーショングラフィックス。実物、制作条件、プロンプトと観察の記録。">
+  <meta property="og:url" content="https://akkie8.github.io/ai-creative-lab/works/vermilion-well/">
+  <meta property="og:image" content="https://akkie8.github.io/ai-creative-lab/assets/ogp.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">作品と実験記録へ</a>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../../index.html">AI Creative Lab</a>
+      <nav aria-label="メインナビゲーション"><a href="../../index.html#experiments">Experiments</a><a href="../../index.html#about">About</a><a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a></nav>
+    </header>
+    <main id="main">
+<section class="hero"><p class="eyebrow">Claude Opus 5.5（Claude Code） · 2026-09-25</p><h1>Vermilion Well</h1><p class="subtitle">黒・朱・紙の3色でめぐる、15秒のモーショングラフィックス。</p></section>
+<section class="note-section" aria-labelledby="question-title"><h2 id="question-title">Question<br>問い</h2><div class="prose"><p>15秒の完全な自由を与えられたら、何をつくるか。最初と最後のフレームを同じ絵にして、途中で予想外の変化を3回以上起こせるか。</p></div></section>
+<section class="exhibition" aria-labelledby="work-title"><div class="section-head"><h2 id="work-title">The work</h2><span>CLAUDE OPUS 5.5 / 2026</span></div>
+<div class="media"><iframe src="../../experiments/vermilion-well/opus-5-5/index.html" title="Vermilion Well（作品のHTMLをそのまま表示）" allow="fullscreen"></iframe></div>
+<div class="label"><div><h3>Vermilion Well</h3><p>15-second motion graphics</p><a class="button" href="../../experiments/vermilion-well/opus-5-5/index.html">作品を開く ↗</a></div><div><dl><div><dt>Model</dt><dd>Claude Opus 5.5（Claude Code）</dd></div><div><dt>Created</dt><dd>2026-09-25</dd></div><div><dt>Format</dt><dd>15秒ループ / WebGL2 / Single HTML</dd></div></dl><ul class="tags" aria-label="技法"><li>Motion graphics</li><li>WebGL2</li><li>Shader</li><li>Single HTML</li></ul></div></div>
+<p class="note">WebGL2対応ブラウザで再生します。作品内をクリックすると全画面表示。作品にフォーカスしてSpaceキーを押すと一時停止・再開できます。マウスを止めるとカーソルが消えます。<a href="../../experiments/vermilion-well/opus-5-5/index.html?t=4.4">?t=4.4で4.4秒の絵を見る ↗</a></p></section>
+<section class="note-section" aria-labelledby="conditions-title"><h2 id="conditions-title">Conditions<br>制作条件</h2><div class="prose"><p>Claude Code（Opus 5.5）にプロンプトを1回送り、追加の指示はしていません。コンセプトから実装までClaudeが決め、指定時刻のコマ一覧を撮影して確認と修正を繰り返しています。</p><p>HTML 1ファイルで動作し、外部の画像・動画・ライブラリは使っていません。描画はWebGL2のシェーダで毎フレーム計算しています。</p><h3>Claudeが行った修正</h3><ul><li>床のぼやけたテカリを、球の後ろから日食のように現れる鋭い太陽の映り込みに変更。</li><li>海と渦の見え方を調整するため、漏斗の深さと幅、波、カメラの軌道を再設計。</li><li>12.4秒以降が真っ白になる原因だった、カメラ計算の差分がNaNになるバグを修正。</li><li>穴の中心が赤く抜ける問題に対し、もやと暗くする処理の順番を変更。</li><li>海のパートに、遅れて落ちる雨粒を28個追加。</li></ul></div></section>
+<section class="note-section" aria-labelledby="metrics-title"><h2 id="metrics-title">Measurements<br>計測値</h2><div class="prose"><p>時間と使用量は、作品を作ったClaude Codeセッションのログから集計した値です。集計の範囲は最初のプロンプトから作品の公開までで、MP4の書き出しやREADME作成など公開後の作業は含みません。生のログはこのリポジトリには含まれていません。</p><dl><div><dt>モデルID</dt><dd><code>claude-opus-5-5</code>（全呼び出し）</dd></div><div><dt>Effort</dt><dd>記録なし</dd></div><div><dt>Human edits</dt><dd>0</dd></div><div><dt>生成時間</dt><dd>36m25s</dd></div><div><dt>モデル呼び出し回数</dt><dd>39</dd></div><div><dt>Input tokens</dt><dd>7,541,527</dd></div><div><dt>Cached input / cache read</dt><dd>7,282,290</dd></div><div><dt>キャッシュ書込</dt><dd>259,159</dd></div><div><dt>通常入力（キャッシュ書込を除く）</dt><dd>78</dd></div><div><dt>Output tokens</dt><dd>178,711</dd></div><div><dt>Total processed tokens</dt><dd>7,720,238</dd></div><div><dt>API換算コスト</dt><dd>未算出</dd></div><div><dt>HTMLの実測行数</dt><dd>434行</dd></div><div><dt>HTMLの実測サイズ</dt><dd>26,993 bytes</dd></div></dl><p>数え方はMagical Botanical Laboratoryと同じです。入力は呼び出しごとに再送された履歴を含む累計で、Cached inputとキャッシュ書込はInputの内数です。Output tokensはthinkingを含みます。Total = Input + Output。</p><h3>時間・コストの注記</h3><p>09:12:58Z → 09:49:23Z、最初のプロンプトから作品の公開まで36分25秒。最終返信完了までは36分43秒。途中でコンテキスト上限による自動要約が1回入っています。API換算コストは、単価の前提を確認していないため出していません。</p><h3>フレーム時間（制作時の報告）</h3><p>制作に使ったMacで、1080p・内部解像度0.6倍の条件で計測。いちばん重いコマで<strong>14.4ms</strong>、大半は<strong>1〜11ms</strong>と報告されています。</p><p class="note">出典は<a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/vermilion-well/README.md">作品のREADME</a>です。行数とバイト数は収録HTMLを実測しています。</p></div></section>
+<section class="note-section" aria-labelledby="prompt-title"><h2 id="prompt-title">Prompt<br>プロンプト全文</h2><div class="prose"><h3>元ネタ</h3><p><a href="https://x.com/shneural/status/2103151003272962130">kirill sh（@shneural）のX投稿 ↗</a>。Opus 5.5とGPT 6 Astraに、履歴書に載せるショーリールを想定した15秒のモーショングラフィックスを依頼し、比較した投稿を起点にしています。</p><h3>アレンジした点</h3><p>ショーリールや技術デモ、定型的なテックCMにせず、前の状態から生まれる大きな変化を3回以上入れるよう指定。15秒全体をひと続きの生き物のように見せ、最初と最後のフレームを同じ絵にすること、外部画像・動画に頼らずブラウザで動かすことを求めました。</p><pre>Create a 15-second motion graphics piece.
+This is not just a showreel.
+Imagine you are one of the best motion designers in the world, and you are given exactly 15 seconds of complete creative freedom.
+What do you make?
+That is the piece I want to see.
+The theme, visual language, narrative, and medium are entirely up to you.
+Do not make a generic tech commercial, SaaS promo, neon AI visual, or template-like geometric animation.
+Make something that immediately demands attention.
+The first second should make the viewer want to keep watching.
+The piece should continuously evolve.
+By the end, it should leave a strong visual afterimage.
+Do not optimize for still-frame beauty alone.
+The motion itself must be the design.
+Use timing, acceleration, deceleration, pauses, reversals, transformation, fragmentation, merging, depth, scale, camera movement, and spatial composition intentionally.
+Typography is allowed, but do not rely on text as the main visual idea.
+Use any combination of techniques you think will create the strongest result, including:
+
+* WebGL / Three.js
+* Canvas
+* CSS
+* SVG
+* shaders
+* particles
+* procedural animation
+* generative art
+* kinetic typography
+* pseudo-3D
+* 3D geometry
+* post-processing
+* distortion
+* fluid motion
+* morphing
+* recursive structures
+* optical illusions
+* unconventional transitions
+
+Do not turn this into a technical showcase.
+Every technique should contribute to one coherent visual experience.
+The most important requirement is unpredictability.
+From the first frame, the viewer should not be able to predict what the piece will look like at 5 seconds, 10 seconds, or 15 seconds.
+Include at least three major visual transformations that make the viewer think:
+“I did not expect that.”
+Do not simply cut between unrelated scenes.
+Each transformation should emerge from the previous state through deformation, collapse, expansion, mutation, disassembly, or reconstruction.
+Make the entire 15 seconds feel like one continuous visual organism.
+Push the piece far enough that the viewer cannot immediately understand how it was made.
+Do not imitate an existing artist or reference.
+Use your own aesthetic judgment.
+Do not play it safe.
+Do not make it tasteful in a predictable way.
+Do not converge toward familiar design trends.
+This is a test of your visual taste, motion design ability, composition, rhythm, technical execution, and creative judgment.
+Take risks.
+Make something that feels authored.
+Implementation requirements:
+
+* It must run directly in a browser
+* Use HTML / CSS / JavaScript
+* You may use libraries such as Three.js if useful
+* Do not depend on external image or video assets
+* Generate as much of the visual material as possible through code
+* The piece should autoplay
+* It must function as a complete 15-second experience
+* The loop should feel intentional rather than abrupt
+* It should hold up at fullscreen size
+* It should remain visually coherent across screen sizes
+
+Do not explain the concept first.
+Do not propose multiple ideas.
+Do not give me a storyboard.
+Make the creative decisions yourself and directly implement the finished piece.
+One final constraint:
+The first frame and the final frame should be visually identical.
+Everything in between can become completely unrecognizable.
+Make those 15 seconds feel much larger than 15 seconds.
+Go all out.</pre><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/vermilion-well/prompt.md">プロンプトと出典の記録 ↗</a></div></section>
+<section class="note-section" aria-labelledby="notes-title"><h2 id="notes-title">Observations<br>観察</h2><div class="prose"><div class="table-wrap" role="region" tabindex="0" aria-label="15秒の流れ"><table><caption>15秒の流れ</caption><thead><tr><th scope="col">秒</th><th scope="col">起きること</th></tr></thead><tbody><tr><th scope="row">0–0.4</th><td>朱色の地に、平らな黒い円（最後のコマと同じ絵）</td></tr><tr><th scope="row">0.4–1</th><td>光が入り、円が漆のような黒い球だったと分かる。背景の朱は真上から見た「床」</td></tr><tr><th scope="row">1.0–2.6</th><td>5回分裂して 1個 → 32個</td></tr><tr><th scope="row">2.6–3</th><td>いったん縮んでから、弾ける</td></tr><tr><th scope="row">3–4.6</th><td>群れになって宙を舞い、息を吸うように一度浮き上がる</td></tr><tr><th scope="row">4.6–8</th><td>雨になって落ち、朱の床が「海」になる。着水するたびに王冠と波紋</td></tr><tr><th scope="row">6.4–12.4</th><td>カメラが海面すれすれを滑る。海が漏斗状にへこんで渦になり、中心の黒い目に吸い込まれていく</td></tr><tr><th scope="row">12.4–14.4</th><td>カメラが真上へ抜け、渦が逆回転。輪が走り、渦の中心が穴に変わる</td></tr><tr><th scope="row">14.35–15</th><td>穴が平らな黒い円になり、最初のコマに戻る</td></tr></tbody></table></div><h3>予想外の変化3つ</h3><ol><li>平らな円が立体の球だったと分かり、分裂する。</li><li>球の群れが雨になり、背景だった朱が海になる。</li><li>海が渦を経て穴になり、その穴が最初の円に戻る。</li></ol><h3>しくみ</h3><p>各ピクセルから視線を飛ばし、球や海面との交点をGPUで計算します。球の分裂、最大150個の雨粒、波紋、渦、漏斗、穴を数式で描いています。</p><p>動きはすべて時刻tの関数です。物理シミュレーションを積み上げず、その時刻の位置や形を直接計算し、カメラの位置はエルミート補間でつなぎます。</p><p>描画は2パス。1パス目の3D描画を濃さとして受け取り、2パス目で黒・朱・紙の3色へ刷り分け、網点、版ズレ、紙の質感を加えています。</p><p>冒頭と終わりでは光を切って平らな円を描き、最後の穴の半径をカメラ位置から逆算して、最初と同じ絵へ戻します。フレーム時間に合わせて内部解像度を調整し、最後のパスは画面解像度のまま描画します。</p></div></section>
+<section class="note-section" aria-labelledby="engineering-title"><h2 id="engineering-title">Engineering</h2><div class="prose"><p class="note">Zenn記事：なし</p><div class="links"><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/vermilion-well/opus-5-5/index.html">作品のソース ↗</a><a href="https://github.com/akkie8/ai-creative-lab/tree/main/experiments/vermilion-well/export">MP4書き出しツール ↗</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/vermilion-well/README.md">作品のREADME ↗</a></div><p>MP4はリポジトリに含めず、書き出しツールから作り直せます。PythonとSwiftを使い、macOS標準のAVFoundationでエンコードします。</p></div></section>
+<section class="note-section" aria-labelledby="distribution-title"><h2 id="distribution-title">Distribution</h2><div class="prose"><p class="note">X投稿：なし</p><a href="../../experiments/vermilion-well/opus-5-5/index.html">公開作品を開く ↗</a></div></section>
+<a class="back" href="../../index.html">← トップへ戻る</a>
+</main>
+    <footer class="site-footer"><span>AI Creative Lab / Experiments in AI, Interaction &amp; Creative Coding</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
+  </div>
+  <script src="../../assets/copy.js"></script>
+</body>
+</html>

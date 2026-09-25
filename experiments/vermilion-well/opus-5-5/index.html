@@ -1,0 +1,434 @@
+<title>Vermilion Well</title>
+<style>
+:root{--ground:#12100e;--paper:#efe8da;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--ground);overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+canvas.idle{cursor:none}
+#m[hidden]{display:none}
+#m{position:fixed;inset:0;display:grid;place-items:center;margin:0;padding:0 16px;color:var(--paper);font:15px/1.5 ui-monospace,Menlo,monospace;text-align:center}
+</style>
+<canvas id="c" aria-label="A fifteen-second loop printed in three inks: a black disc on vermilion becomes a sphere, divides like a cell, bursts, rains into a red sea, drains into a whirlpool and returns as a hole."></canvas>
+<p id="m" hidden>This piece needs WebGL2.</p>
+<script>
+(() => {
+'use strict';
+const Q = new URLSearchParams(location.search);
+const SHEET = Q.get('sheet'), FIX = Q.has('t') ? parseFloat(Q.get('t')) : null;
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', {antialias:false, alpha:false, depth:false, stencil:false, preserveDrawingBuffer:SHEET !== null, powerPreference:'high-performance'});
+if (!gl) { document.getElementById('m').hidden = false; return; }
+
+// ───────────────────────── math
+const PI = Math.PI;
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x, lerp = (a, b, x) => a + (b - a) * x;
+const seg = (t, a, b) => clamp((t - a) / (b - a)), ss = (a, b, t) => { const x = seg(t, a, b); return x * x * (3 - 2 * x); };
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(2 - 2 * x, 3) / 2, eoq = x => 1 - Math.pow(1 - x, 4);
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s], len = a => Math.hypot(a[0], a[1], a[2]), nrm = a => mul(a, 1 / len(a));
+const mix3 = (a, b, x) => add(a, mul(sub(b, a), x));
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const md = (a, n) => ((a % n) + n) % n;
+const rotA = (p, k, a) => { const c = Math.cos(a), s = Math.sin(a), d = p[0] * k[0] + p[1] * k[1] + p[2] * k[2], x = cross(k, p);
+  return [0, 1, 2].map(i => p[i] * c + x[i] * s + k[i] * d * (1 - c)); };
+let seed = 0x51ab; const rnd = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rUnit = () => { const z = rnd() * 2 - 1, a = rnd() * 2 * PI, r = Math.sqrt(1 - z * z); return [r * Math.cos(a), z, r * Math.sin(a)]; };
+
+// ───────────────────────── score
+const LOOP = 15, C0 = [0, 4, 0], R0 = 1, TAN0 = .4225, V = [0, 34], HEND = 12, RH = .4 * HEND * TAN0, G = 26, NMAX = 240;
+const LD = nrm([-.5, .8, -.33]);
+
+// 1 → 32: cell division, accelerating
+const GENS = [[1.00, 1.46, [1, 0, 0]], [1.56, 1.90, [0, 0, 1]], [1.98, 2.22, [0, 1, 0]], [2.28, 2.45, nrm([.7, .25, -.67])], [2.50, 2.62, nrm([-.35, .7, .62])]];
+const TUMBLE = nrm([.25, 1, .15]);
+function blobs(t) {
+  let n = 1, sx = 0; const sep = [];
+  GENS.forEach(([a, b]) => { const x = seg(t, a, b); if (t >= a) n *= 2; sx += x;
+    sep.push(x < 1 ? Math.pow(x, 1.7) : 1 + .14 * Math.exp(-(t - b) * 9) * Math.sin((t - b) * 30)); });
+  const tau = t - .42, rx = tau > 0 ? 1 + .13 * Math.exp(-tau * 4.5) * Math.sin(tau * 21) : 1;
+  const r = R0 * Math.pow(2, -sx / 3), st = 1 / (rx * rx * rx), cs = 1 - .2 * ss(2.64, 2.9, t);
+  const ang = .6 * Math.max(0, t - 1) + .5 * ss(1, 2.6, t), out = [];
+  for (let i = 0; i < n; i++) {
+    let p = [0, 0, 0];
+    GENS.forEach(([a, , ax], g) => { if (t >= a) p = add(p, mul(ax, R0 * Math.pow(2, -(g + 1) / 3) * .98 * sep[g] * ((i >> g) & 1 ? 1 : -1))); });
+    p = add(C0, mul(rotA(p, TUMBLE, ang), cs));
+    out.push([p[0], p[1], p[2], r * rx, st, 0]);
+  }
+  return out;
+}
+
+// the sea sags into a whirlpool, then snaps into a clean hole
+function funnel(t) { return {D: 30 * eio(seg(t, 7.6, 10.0)), w: 7, hm: eio(seg(t, 12.9, 13.9)), e: lerp(2.5, .015, eio(seg(t, 12.9, 14.1))), hd: 60}; }
+function geoH(t, x, z) {
+  const f = funnel(t), dx = x - V[0], dz = z - V[1], r2 = dx * dx + dz * dz, r = Math.sqrt(r2), w2 = f.w * f.w;
+  const q = clamp((r - RH + f.e) / (2 * f.e));
+  return lerp(-f.D * w2 / (r2 + w2), -f.hd * (1 - q * q * (3 - 2 * q)), f.hm);
+}
+
+// camera: keyed until the sea, then a spiral that was always heading for the drain
+const fwdOf = (y, p) => [Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p)];
+const D2R = PI / 180;
+const orbit = (tg, yd, pd, dist, rd, tn, e) => ({v: [...sub(tg, mul(fwdOf(yd * D2R, pd * D2R), dist)), yd * D2R, pd * D2R, rd * D2R, tn], e});
+const key = (x, y, z, yd, pd, rd, tn, e) => ({v: [x, y, z, yd * D2R, pd * D2R, rd * D2R, tn], e});
+function herm(K, t) {
+  let i = 0; while (i < K.length - 2 && t >= K[i + 1].t) i++;
+  const a = K[i], b = K[i + 1], dt = b.t - a.t, x = clamp((t - a.t) / dt), x2 = x * x, x3 = x2 * x;
+  return a.v.map((v, j) => (2 * x3 - 3 * x2 + 1) * v + (x3 - 2 * x2 + x) * dt * a.m[j] + (3 * x2 - 2 * x3) * b.v[j] + (x3 - x2) * dt * b.m[j]);
+}
+const tangents = K => K.forEach((k, i) => { if (k.m) return;
+  if (k.e || !i || i === K.length - 1) { k.m = k.v.map(() => 0); return; }
+  const p = K[i - 1], n = K[i + 1]; k.m = k.v.map((_, j) => (n.v[j] - p.v[j]) / (n.t - p.t)); });
+// around the drain: distance from its axis, angle, height above the water, how hard we stare at the eye, lens
+const VK = [
+  [6.4, 36, -PI / 2, .7, 0, .55], [8.4, 19, -PI / 2 + .25, .9, .05, .56], [9.4, 14.5, -PI / 2 + .95, 4, .8, .62],
+  [10.6, 11, -PI / 2 + 2.3, 6, .95, .66], [11.6, 5, -PI / 2 + 3.9, 9, 1, .64], [12.4, .8, -PI / 2 + 5.6, 12, 1, .6],
+].map(([t, ...v]) => ({t, v}));
+VK[0].m = [-8.5, 0, 0, 0, 0]; VK[5].m = VK[5].v.map((v, j) => (v - VK[4].v[j]) / .8); tangents(VK);
+function spiralPos(t) {
+  const [rho, th, cl, w, tn] = herm(VK, t), x = V[0] + rho * Math.cos(th), z = V[1] + rho * Math.sin(th);
+  return [x, geoH(t, x, z) + cl, z, th, rho, w, tn];
+}
+const inV = t => clamp(t, 6.4, 12.4);
+function spiralYP(t) {
+  const p = spiralPos(t), v = nrm(sub(spiralPos(inV(t + .01)), spiralPos(inV(t - .01)))), ref = p[3] + 1.25 * PI;
+  const yawV = ref + md(Math.atan2(v[0], -v[2]) - ref + PI, 2 * PI) - PI, pitchV = Math.asin(clamp(v[1] - .07, -1, 1));
+  return [lerp(yawV, p[3] + 1.5 * PI, p[5]), lerp(pitchV, Math.atan2(-.9 * funnel(t).D - p[1], p[4]), p[5])];
+}
+function camSpiral(t) {
+  const p = spiralPos(t), [yaw, pitch] = spiralYP(t), a = inV(t - .02), b = inV(t + .02), rate = (spiralYP(b)[0] - spiralYP(a)[0]) / (b - a);
+  return [p[0], p[1], p[2], yaw, pitch, clamp(-.12 * rate, -.35, .35) * (1 - ss(10.6, 11.8, t)), p[6]];
+}
+const P0 = camSpiral(12.4), Pm = camSpiral(12.39), PV = [(P0[0] - Pm[0]) * 50, (P0[2] - Pm[2]) * 50], YR0 = (P0[3] - Pm[3]) * 100;
+function camRise(t) {
+  const x = seg(t, 12.4, 13.2), x2 = x * x, x3 = x2 * x, h00 = 2 * x3 - 3 * x2 + 1, h10 = x3 - 2 * x2 + x, h01 = 3 * x2 - 2 * x3, tau = Math.max(0, t - 12.4);
+  return [h00 * P0[0] + h10 * .8 * PV[0] + h01 * V[0], lerp(P0[1], HEND, eoq(seg(t, 12.4, 14.3))), h00 * P0[2] + h10 * .8 * PV[1] + h01 * V[1],
+    P0[3] + YR0 * (1 - Math.exp(-2.5 * tau)) / 2.5, lerp(P0[4], -PI / 2, eio(seg(t, 12.4, 12.95))), lerp(P0[5], 0, eio(seg(t, 12.4, 13.2))), lerp(P0[6], TAN0, eio(seg(t, 12.4, 14.2)))];
+}
+const KEYS = [
+  [0.00, orbit(C0, 0, -90, 6, 0, TAN0, 1)],
+  [0.42, orbit(C0, 0, -90, 6, 0, TAN0, 1)],
+  [1.70, orbit(C0, 16, -75, 5.9, 2, .435)],
+  [2.55, orbit(C0, 36, -61, 6.6, 4, .45)],
+  [2.93, orbit(C0, 40, -59, 6.3, 4, .45, 1)],
+  [3.40, orbit([0, 4.4, 0], 64, -46, 4.4, -5, .64)],
+  [4.05, orbit([0, 5.4, 0], 104, -27, 1.9, 6, .68)],
+  [4.60, key(-.9, 5.9, -1.1, 136, -15, -2, .66, 1)],
+  [5.35, key(-.7, 3.1, -1.7, 163, -11, 3, .6)],
+].map(([t, k]) => ({t, ...k}));
+{ const a = camSpiral(6.4), b = camSpiral(6.41); KEYS.push({t: 6.4, v: a, m: a.map((v, j) => (b[j] - v) / .01)}); }
+tangents(KEYS);
+const camera = t => t >= 12.4 ? camRise(t) : t >= 6.4 ? camSpiral(t) : herm(KEYS, t);
+
+// the burst: the 32 cells plus the ones hiding inside them
+function swPos(s, t) {
+  const tau = t - 2.95, e = 1 - Math.exp(-5 * tau), a = s.sw * tau, c = Math.cos(a), sn = Math.sin(a);
+  let x = s.p[0] + s.d[0] * s.dist * e - C0[0], y = s.p[1] + s.d[1] * s.dist * e, z = s.p[2] + s.d[2] * s.dist * e - C0[2], st = 1;
+  [x, z] = [x * c - z * sn + C0[0], x * sn + z * c + C0[2]];
+  y += .45 * ss(4.2, 4.6, t);
+  if (t > s.tf) { const f = t - s.tf; y -= .5 * G * f * f; st = 1 + Math.min(G * f * .035, .9); }
+  return [x, y, z, st];
+}
+const SW = [], B0 = blobs(2.949);
+for (let i = 0; i < 150; i++) {
+  let s;
+  for (let tr = 0; tr < 16; tr++) {
+    const big = i < B0.length, p = big ? B0[i].slice(0, 3) : add(C0, mul(rUnit(), 1.3 * Math.cbrt(rnd())));
+    const r = big ? B0[i][3] : .05 + .5 * Math.pow(rnd(), 2.3), d = nrm(add(rUnit(), [0, .5, 0]));
+    let dist = big ? 1.2 + 4.5 * rnd() : 3 + 12 * Math.pow(rnd(), .8);
+    if (p[1] + d[1] * dist < r + .8) dist = Math.max(0, (r + .8 - p[1]) / d[1]);
+    s = {p, r, d, dist, big, del: big ? 0 : .04 * rnd(), tf: 4.6 + .12 * rnd(), sw: (.15 + .25 * rnd()) * (rnd() < .5 ? -1 : 1)};
+    if (i >= 122) { const z = 3 + 24 * rnd(); // flung highest, they fall last, ahead of the skim
+      s = {p: [-7 + 14 * rnd(), 15 + 6 * rnd(), z], r: .12 + .34 * rnd(), d: [0, 1, 0], dist: 0, big: false, del: 0, tf: 5.3 + (z - 3) / 24 * 2.2 + .25 * rnd(), sw: 0}; }
+    let ok = true;
+    for (let tt = 2.95; tt < 9 && ok; tt += .03) { const q = swPos(s, tt); if (q[1] < -1) break; if (len(sub(q, camera(tt))) < s.r * q[3] + .45) ok = false; }
+    if (ok) break;
+  }
+  let lo = s.tf, hi = s.tf + 2.5;
+  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2, q = swPos(s, m); if (q[1] - s.r * q[3] > 0) lo = m; else hi = m; }
+  const q = swPos(s, hi); s.ti = hi; s.ix = q[0]; s.iz = q[2]; s.crown = [];
+  if (s.r > .16) for (let j = 0, nd = 5 + Math.round(s.r * 14); j < nd; j++) { const a = (j + rnd() * .5) / nd * 2 * PI;
+    s.crown.push({ca: Math.cos(a), sa: Math.sin(a), vh: (1.5 + 3 * s.r) * (.75 + .5 * rnd()), vv: (3 + 5 * s.r) * (.75 + .5 * rnd()), rad: .025 + .06 * s.r * (.6 + .8 * rnd()), d: .02 * rnd()}); }
+  SW.push(s);
+}
+function swarm(t, S, D) {
+  const J = [], C = [];
+  for (const s of SW) {
+    const q = swPos(s, t), r = s.r * (s.big ? 1 : ss(0, .22, t - 2.95 - s.del));
+    if (r > .002 && q[1] + r * q[3] > 0) S.push([q[0], q[1], q[2], r, q[3], 0]);
+    const tau = t - s.ti;
+    if (tau <= 0) continue;
+    if (tau < 3.6) D.push([s.ix, s.iz, s.ti, .1 * Math.pow(s.r, .6)]);
+    if (s.r > .2) { const tj = tau - .06, Tj = .3 + .45 * s.r;
+      if (tj > 0 && tj < Tj) { const rj = .2 * s.r + .03, sj = 2.4 + 2 * s.r; J.push([s.ix, (.8 + 2.4 * s.r) * Math.sin(PI * tj / Tj) - rj * sj * .9, s.iz, rj, sj, 1]); } }
+    for (const c of s.crown) { const f = tau - c.d; if (f <= 0) continue; const y = c.vv * f - .5 * G * f * f;
+      if (y > -c.rad) C.push([s.ix + c.ca * c.vh * f, y, s.iz + c.sa * c.vh * f, c.rad, 1 + Math.min(Math.abs(c.vv - G * f) * .05, .8), 1]); }
+  }
+  S.push(...J, ...C);
+}
+
+// the whirlpool's rotation, integrated so it can stop and reverse
+const omega = t => t < 12.4 ? lerp(1.5, 8, ss(8, 12.3, t)) : 8 * Math.exp(-(t - 12.4) * 5) - 5 * ss(12.4, 12.75, t) * (1 - ss(12.9, 13.8, t));
+const PHI = new Float32Array(1502); for (let i = 1; i <= 1501; i++) PHI[i] = PHI[i - 1] + omega((i - .5) * .01) * .01;
+const phi = t => { const x = clamp(t * 100, 0, 1500), i = Math.floor(x), f = x - i; return PHI[i] * (1 - f) + PHI[i + 1] * f; };
+
+// violence → misregistration + shake
+function energy(t) {
+  let e = 0; const I = (a, amp, k) => { if (t >= a) e += amp * Math.exp(-(t - a) * k); };
+  I(.42, 1, 6.5); I(2.95, 1.25, 3.4); I(4.6, .35, 3); I(5.0, .5, 2.2); I(8.9, .35, 1.6); I(10.6, .3, 2); I(12.4, 1.1, 2.8);
+  e += .2 * ss(10.4, 11.8, t) * (1 - ss(12.2, 12.5, t));
+  return e * (1 - ss(13.8, 14.35, t));
+}
+
+// ───────────────────────── gl
+const VS = `#version 300 es
+void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
+
+const SCENE = `#version 300 es
+precision highp float;
+out vec4 o;
+uniform vec2 uRes, uDk;
+uniform float uT, uTan, uL, uK, uWob, uSwell, uSpA, uSpM, uSpK, uSpP, uRgA, uRgP;
+uniform vec3 uEye, uF, uR, uU, uLd;
+uniform int uMeta, uN, uND;
+uniform vec4 uB, uFun, uHole;
+layout(std140) uniform Data { vec4 S[${NMAX}]; vec4 X[${NMAX}]; vec4 DR[${NMAX}]; };
+
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.) / k; return min(a, b) - h * h * k * .25; }
+float mapM(vec3 p){
+  float d = 1e5;
+  for(int i = 0; i < uN; i++){ vec4 s = S[i]; float st = X[i].x; vec3 q = p - s.xyz; q.y /= st; d = smin(d, (length(q) - s.w) * min(st, 1.), uK); }
+  return d + uWob * sin(p.x * 4.1 + uT * 7.3) * sin(p.y * 3.7 - uT * 6.1) * sin(p.z * 4.4 + uT * 5.2);
+}
+vec3 nrmM(vec3 p){
+  const vec2 k = vec2(1, -1); const float e = 2e-3;
+  return normalize(k.xyy * mapM(p + k.xyy * e) + k.yyx * mapM(p + k.yyx * e) + k.yxy * mapM(p + k.yxy * e) + k.xxx * mapM(p + k.xxx * e));
+}
+float iEll(vec3 ro, vec3 rd, int i){
+  vec4 s = S[i]; float st = X[i].x; vec3 oc = ro - s.xyz, d = rd; oc.y /= st; d.y /= st;
+  float a = dot(d, d), b = dot(oc, d), h = b * b - a * (dot(oc, oc) - s.w * s.w);
+  return h < 0. ? -1. : (-b - sqrt(h)) / a;
+}
+bool anyS(vec3 ro, vec3 rd){ for(int i = 0; i < uN; i++) if(iEll(ro, rd, i) > 1e-3) return true; return false; }
+float shadowS(vec3 ro, vec3 rd){
+  float r = 1.;
+  for(int i = 0; i < uN; i++){
+    vec4 s = S[i]; vec3 oc = ro - s.xyz; float b = dot(oc, rd);
+    if(b > 0.) continue;
+    float h = b * b - dot(oc, oc) + s.w * s.w, d = sqrt(max(0., s.w * s.w - h)) - s.w, t = -b - sqrt(max(h, 0.));
+    r = min(r, smoothstep(0., 1., 10. * d / max(t, 1e-3)));
+    if(r < .005) break;
+  }
+  return r;
+}
+float geoH(vec2 xz, out vec2 g){
+  vec2 d = xz - uFun.xy; float r2 = dot(d, d) + 1e-6, r = sqrt(r2), w2 = uFun.w * uFun.w, q = w2 / (r2 + w2);
+  float e = uHole.w, x = clamp((r - uHole.y + e) / (2. * e), 0., 1.);
+  g = d / r * mix(2. * uFun.z * q * q * r / w2, uHole.z * 3. * x * (1. - x) / e, uHole.x);
+  return mix(-uFun.z * q, -uHole.z * (1. - x * x * (3. - 2. * x)), uHole.x);
+}
+vec2 bumpG(vec2 xz, float fp){
+  vec2 g = vec2(0);
+  for(int i = 0; i < uND; i++){
+    vec4 dr = DR[i]; float tau = uT - dr.z; vec2 d = xz - dr.xy; float r = length(d) + 1e-4, u = r - 2.4 * tau, sg = .22 + .3 * tau;
+    if(abs(u) > 3. * sg) continue;
+    float E = exp(-u * u / (sg * sg)) * exp(3. * (cos(7. * u) - 1.)), A = dr.w * exp(-tau) / (1. + .45 * r);
+    g += d / r * A * E * (-2. * u / (sg * sg) - 21. * sin(7. * u));
+  }
+  g *= clamp(1.6 - 7. * fp, 0., 1.);
+  if(uSwell > 0.){
+    vec2 k1 = vec2(.8, .45) * 1.1, k2 = vec2(-.45, .85) * 1.7, k3 = vec2(.25, -.95) * 2.6, k4 = vec2(.7, .7) * 3.9;
+    g += uSwell * (k1 * cos(dot(k1, xz) - uT * 1.9) + .7 * k2 * cos(dot(k2, xz) - uT * 2.4) * clamp(1.6 - 1.9 * fp, 0., 1.)
+      + .45 * k3 * cos(dot(k3, xz) - uT * 3.1) * clamp(1.6 - 2.7 * fp, 0., 1.) + .3 * k4 * cos(dot(k4, xz) - uT * 3.8) * clamp(1.6 - 3.9 * fp, 0., 1.));
+  }
+  if(uSpA + uRgA > 0.){
+    vec2 d = xz - uFun.xy; float r2 = dot(d, d) + 1e-4, r = sqrt(r2), lr = log(r);
+    vec2 gp = (uSpM * vec2(-d.y, d.x) + uSpK * d) / r2; float lg = length(gp);
+    float ph = uSpM * atan(d.y, d.x) + uSpK * lr - uSpP, pr = 9. * lr + uRgP;
+    g -= uSpA * 3. * sin(ph) * exp(3. * (cos(ph) - 1.)) * gp / lg * clamp(1.5 - 1.3 * lg * fp, 0., 1.);
+    g -= uRgA * 3. * sin(pr) * exp(3. * (cos(pr) - 1.)) * d / r * clamp(1.5 - 11.7 / r * fp, 0., 1.);
+  }
+  return g;
+}
+float floorT(vec3 ro, vec3 rd){
+  if(uFun.z < 1e-3 && uHole.x < 1e-3) return rd.y < -1e-5 ? -ro.y / rd.y : 1e9;
+  float t = 0., tp = 0., hl = length(rd.xz); vec2 g;
+  if(ro.y > 0.){ if(rd.y > -1e-5) return 1e9; t = tp = -ro.y / rd.y; }
+  for(int i = 0; i < 160; i++){
+    vec3 p = ro + rd * t; float h = p.y - geoH(p.xz, g);
+    if(h < 0.){
+      float a = tp, b = t;
+      for(int j = 0; j < 7; j++){ float m = .5 * (a + b); vec3 q = ro + rd * m; if(q.y - geoH(q.xz, g) < 0.) b = m; else a = m; }
+      return b;
+    }
+    if(h < 1e-3 * (1. + t) || p.y < -uDk.y - .5) return t;
+    tp = t; t += .9 * h / (abs(rd.y) + length(g) * hl + .02);
+    if(t > 800.) break;
+  }
+  return 1e9;
+}
+float haze(float t){ return 1. - exp(-max(t - 18., 0.) * .025); }
+float shadeFloor(vec3 ro, vec3 rd, float t){
+  vec3 p = ro + rd * t; vec2 gg; geoH(p.xz, gg);
+  vec3 n0 = normalize(vec3(-gg.x, 1., -gg.y));
+  float fp = t * 2. * uTan / min(uRes.x, uRes.y) / max(abs(dot(rd, n0)), .06);
+  vec2 gb = bumpG(p.xz, fp) * (1. + .5 * length(gg));
+  vec3 n = normalize(vec3(-gg.x - gb.x, 1., -gg.y - gb.y)), rf = reflect(rd, n);
+  float v = .5 + .35 * (dot(n0, uLd) - uLd.y) + 4. * (dot(n, uLd) - dot(n0, uLd)) + 2. * pow(max(dot(rf, uLd), 0.), 900.);
+  float fr = .02 + .98 * pow(1. - max(dot(n, -rd), 0.), 5.), env = rf.y < 0. ? .5 : 1.;
+  if(uN > 0 && fr > .05 && rf.y > 0. && anyS(p + n * .02, rf)) env = 0.;
+  v = mix(v, env, fr * .92);
+  if(uN > 0) v = mix(v, .02, (1. - shadowS(p + n * .02, uLd)) * .96);
+  v = mix(.5, v, uL);
+  v = mix(v, 1., haze(t));
+  return mix(v, 0., smoothstep(uDk.x, uDk.y, -p.y));
+}
+float shadeSphere(vec3 rd, float t, vec3 n, float mat){
+  vec3 rf = reflect(rd, n);
+  float fr = .03 + .97 * pow(1. - max(dot(n, -rd), 0.), 3.), env = mix(.5, 1., smoothstep(-.05, .05, rf.y)), sp = pow(max(dot(rf, uLd), 0.), 36.);
+  float v = mat > .5 ? .5 + (fr * (env - .5) + 1.2 * sp + .35 * (dot(n, uLd) - .3)) * uL : (fr * env + 1.6 * sp) * uL;
+  return mix(v, 1., haze(t));
+}
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5 * uRes) / (.5 * min(uRes.x, uRes.y));
+  vec3 ro = uEye, rd = normalize(uF + uTan * (uv.x * uR + uv.y * uU)), n = vec3(0, 1, 0);
+  float tf = floorT(ro, rd), ts = 1e9, mat = 0.;
+  if(uMeta == 1){
+    vec3 oc = ro - uB.xyz; float b = dot(oc, rd), h = b * b - dot(oc, oc) + uB.w * uB.w;
+    if(h > 0.){
+      h = sqrt(h); float t = max(-b - h, 0.), t1 = min(-b + h, tf);
+      for(int i = 0; i < 100 && t < t1; i++){ float d = mapM(ro + rd * t); if(d < 1e-3 * (1. + t)){ ts = t; break; } t += .85 * d; }
+      if(ts < 1e9) n = nrmM(ro + rd * ts);
+    }
+  } else {
+    int id = -1;
+    for(int i = 0; i < uN; i++){ float t = iEll(ro, rd, i); if(t > 1e-3 && t < ts){ ts = t; id = i; } }
+    if(id >= 0 && ts < tf){ vec4 s = S[id]; float st = X[id].x; vec3 q = ro + rd * ts - s.xyz; n = normalize(vec3(q.x, q.y / (st * st), q.z)); mat = X[id].y; }
+  }
+  o = vec4(ts < tf ? shadeSphere(rd, ts, n, mat) : tf < 1e9 ? shadeFloor(ro, rd, tf) : 1., 0., 0., 1.);
+}`;
+
+// three inks on paper: black, vermilion, and the paper itself
+const POST = `#version 300 es
+precision highp float;
+out vec4 o;
+uniform sampler2D uTex;
+uniform vec2 uRes, uOrg, uOff;
+uniform float uFlat, uCell;
+float field(vec2 fc){
+  vec2 uv = (fc - .5 * uRes) / (.5 * min(uRes.x, uRes.y));
+  return mix(texture(uTex, fc / uRes).r, .25 + clamp((length(uv) - .4) * min(uRes.x, uRes.y) / 6., -.25, .25), uFlat);
+}
+float scr(vec2 p, float a){ p = mat2(cos(a), sin(a), -sin(a), cos(a)) * p * (3.14159 / uCell); return sin(p.x) * sin(p.y); }
+float ink(float x){ float w = fwidth(x) * .7 + 1e-4; return smoothstep(-w, w, x); }
+float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + 1.), f.x), f.y); }
+void main(){
+  vec2 fc = gl_FragCoord.xy - uOrg;
+  float vk = field(fc + uOff), vr = field(fc - .5 * uOff), hk = scr(fc, .785), hb = scr(fc, .262), m = min(uRes.x, uRes.y);
+  float K = ink(.25 + .09 * hk - vk), P = ink(vr - .75 - .09 * hb), R = (1. - P) * ink(vr - .25 - .09 * hk);
+  vec3 paper = vec3(.936, .91, .855) * (.975 + .035 * hash(fc + 3.1));
+  vec3 c = paper * mix(vec3(1), vec3(.93, .245, .105), R * (.9 + .1 * vn(fc / (m * .012))))
+                 * mix(vec3(1), vec3(.075, .066, .063), K * (.93 + .07 * vn(fc / (m * .05) + 7.)));
+  o = vec4(c, 1);
+}`;
+
+function prog(fs) {
+  const p = gl.createProgram();
+  for (const [ty, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const sh = gl.createShader(ty); gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    gl.attachShader(p, sh);
+  }
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) { const nm = gl.getActiveUniform(p, i).name, l = gl.getUniformLocation(p, nm); if (l) u[nm] = l; }
+  return {p, u};
+}
+const SC = prog(SCENE), PO = prog(POST);
+gl.bindVertexArray(gl.createVertexArray());
+const UD = new Float32Array(NMAX * 12), ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferData(gl.UNIFORM_BUFFER, UD.byteLength, gl.DYNAMIC_DRAW);
+gl.uniformBlockBinding(SC.p, gl.getUniformBlockIndex(SC.p, 'Data'), 0); gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
+const fbo = gl.createFramebuffer(), tex = gl.createTexture(); let fw = 0, fh = 0;
+gl.bindTexture(gl.TEXTURE_2D, tex);
+for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+
+function render(t, ox, oy, w, h, sc) {
+  // camera
+  const e = energy(t); let [x, y, z, yaw, pitch, roll, tn] = camera(t);
+  yaw += e * .011 * (Math.sin(t * 37.1) + .6 * Math.sin(t * 23.3));
+  pitch = clamp(pitch + e * .011 * (Math.sin(t * 31.7 + 1) + .6 * Math.sin(t * 19.1 + 2)), -PI / 2, PI / 2);
+  const f = fwdOf(yaw, pitch), r0 = [Math.cos(yaw), 0, Math.sin(yaw)], u0 = cross(r0, f), cr = Math.cos(roll), sr = Math.sin(roll);
+  // bodies
+  const meta = t < 2.95, list = meta ? blobs(t) : [], drops = [];
+  if (!meta) swarm(t, list, drops);
+  const n = Math.min(list.length, NMAX), nd = Math.min(drops.length, NMAX);
+  let bound = 0, k = 1;
+  for (let i = 0; i < n; i++) { const s = list[i]; UD.set(s.slice(0, 4), i * 4); UD.set([s[4], s[5], 0, 0], (NMAX + i) * 4); if (meta) bound = Math.max(bound, len(sub(s, C0)) + s[3] * Math.max(1, s[4])); }
+  for (let i = 0; i < nd; i++) UD.set(drops[i], (2 * NMAX + i) * 4);
+  if (meta) k = .45 * list[0][3];
+  const fu = funnel(t), L = t < .42 ? 0 : eoq(seg(t, .42, .6)) * (1 - ss(13.75, 14.35, t));
+  const flat = t < .42 ? 1 : t < .47 ? 1 - seg(t, .42, .47) : ss(14.35, 14.5, t);
+  // scene pass
+  const sw = Math.max(2, Math.round(w * sc)), sh = Math.max(2, Math.round(h * sc));
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (sw !== fw || sh !== fh) { fw = sw; fh = sh; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, sw, sh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, sw, sh);
+  gl.useProgram(SC.p);
+  gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferSubData(gl.UNIFORM_BUFFER, 0, UD);
+  const u = SC.u;
+  gl.uniform2f(u.uRes, sw, sh); gl.uniform1f(u.uT, t); gl.uniform1f(u.uTan, tn); gl.uniform1f(u.uL, L);
+  gl.uniform3f(u.uEye, x, y, z); gl.uniform3fv(u.uF, f);
+  gl.uniform3fv(u.uR, add(mul(r0, cr), mul(u0, sr))); gl.uniform3fv(u.uU, sub(mul(u0, cr), mul(r0, sr)));
+  gl.uniform3fv(u.uLd, nrm(mix3([0, 1, 0], LD, 1 - Math.pow(1 - seg(t, .42, 1.25), 3))));
+  gl.uniform1i(u.uMeta, meta ? 1 : 0); gl.uniform1i(u.uN, n); gl.uniform1i(u.uND, nd);
+  gl.uniform1f(u.uK, k); gl.uniform1f(u.uWob, t < .42 ? 0 : .04 * Math.exp(-(t - .42) * 2.2) + .01 * ss(1, 1.5, t));
+  gl.uniform4f(u.uB, C0[0], C0[1], C0[2], bound + k * .5 + .08);
+  gl.uniform4f(u.uFun, V[0], V[1], fu.D, fu.w); gl.uniform4f(u.uHole, fu.hm, RH, fu.hd, fu.e);
+  gl.uniform2f(u.uDk, lerp(Math.max(.78 * fu.D, .5), .03, fu.hm), lerp(Math.max(.82 * fu.D, 1), .35, fu.hm));
+  gl.uniform1f(u.uSwell, .08 * ss(6, 8, t) * (1 - ss(9.5, 11, t)));
+  gl.uniform1f(u.uSpA, .55 * ss(7.3, 9, t) * (1 - ss(12.9, 13.6, t))); gl.uniform1f(u.uSpM, 5); gl.uniform1f(u.uSpK, 7); gl.uniform1f(u.uSpP, phi(t));
+  gl.uniform1f(u.uRgA, .5 * ss(12.9, 13.4, t) * (1 - ss(13.6, 14.25, t))); gl.uniform1f(u.uRgP, 6 * (t - 12.9));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // print pass
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(ox, oy, w, h);
+  gl.useProgram(PO.p);
+  const m = Math.min(w, h), a = 2.2 + t * 1.3, off = e * .0085 * m;
+  gl.uniform1i(PO.u.uTex, 0); gl.uniform2f(PO.u.uRes, w, h); gl.uniform2f(PO.u.uOrg, ox, oy);
+  gl.uniform2f(PO.u.uOff, Math.cos(a) * off, Math.sin(a) * off); gl.uniform1f(PO.u.uFlat, flat); gl.uniform1f(PO.u.uCell, Math.max(2.6, m * .0052));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+// ───────────────────────── run
+if (SHEET !== null) {
+  const T = SHEET && SHEET !== '1' ? SHEET.split(',').map(Number) : [0, .5, .9, 1.4, 1.9, 2.4, 2.8, 3.2, 3.9, 4.8, 5.4, 6.2, 7.4, 8.6, 9.8, 11, 12.1, 12.8, 13.5, 14.2];
+  const d = Math.min(devicePixelRatio || 1, 2), cols = +Q.get('cols') || 5, rows = Math.ceil(T.length / cols);
+  const tw = Math.floor(innerWidth * d / cols), th = Math.floor(innerHeight * d / rows);
+  cv.width = tw * cols; cv.height = th * rows;
+  T.forEach((t, i) => render(t, (i % cols) * tw, (rows - 1 - Math.floor(i / cols)) * th, tw, th, 1));
+  return;
+}
+let W = 0, H = 0, scale = 1, maxScale = 1;
+function resize() {
+  const d = Math.min(devicePixelRatio || 1, 2); W = cv.width = Math.round(innerWidth * d); H = cv.height = Math.round(innerHeight * d);
+  maxScale = Math.min(1, Math.sqrt(2.4e6 / (W * H))); scale = Math.min(maxScale, Math.sqrt(1.1e6 / (W * H)));
+}
+addEventListener('resize', resize); resize();
+let start = null, last = 0, acc = 0, cnt = 0, paused = false, now = 0, idle;
+const clock = () => FIX !== null ? FIX : md((now - start) / 1000, LOOP);
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (start === null) start = ts;
+  const dt = ts - last; last = ts;
+  if (!paused) now = ts;
+  if (dt > 0 && dt < 100 && ++cnt) { acc += dt; if (cnt === 24) { const a = acc / cnt; if (a > 20 && scale > .3) scale *= .86; else if (a < 13.5) scale = Math.min(maxScale, scale * 1.07); acc = cnt = 0; } }
+  render(clock(), 0, 0, W, H, scale);
+}
+requestAnimationFrame(loop);
+addEventListener('keydown', ev => { if (ev.code !== 'Space') return; ev.preventDefault(); if (paused) start += performance.now() - now; paused = !paused; });
+cv.addEventListener('click', () => { const d = document, p = d.fullscreenElement ? d.exitFullscreen() : d.documentElement.requestFullscreen?.(); p?.catch?.(() => {}); });
+addEventListener('pointermove', () => { cv.classList.remove('idle'); clearTimeout(idle); idle = setTimeout(() => cv.classList.add('idle'), 1600); });
+})();
+</script>
