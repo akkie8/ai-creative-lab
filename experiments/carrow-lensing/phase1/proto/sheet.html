@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>contact sheet</title>
+<style>body{margin:0;background:#0c0c0d}canvas{display:block}</style>
+<canvas id="gl"></canvas>
+<script src="lens.js"></script>
+<script src="laws.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const law = LAWS[q.get('law')], W = +(q.get('w') || 1200), H = +(q.get('h') || 800);
+  const seeds = (q.get('seeds') || '1,2,3,4,5,6').split(',').map(Number);
+  const gl = document.getElementById('gl');
+  const lens = new Lens(gl, W, H, 4);
+  const cols = 2, gut = 36, cap = 44, top = 96;
+  const rows = Math.ceil(seeds.length / cols);
+  const sheet = document.createElement('canvas');
+  sheet.width = cols * W + (cols + 1) * gut; sheet.height = top + rows * (H + cap) + gut;
+  const ctx = sheet.getContext('2d');
+  ctx.fillStyle = '#0c0c0d'; ctx.fillRect(0, 0, sheet.width, sheet.height);
+  ctx.fillStyle = '#d8d4cc'; ctx.font = '500 30px -apple-system, Helvetica, sans-serif';
+  ctx.fillText(law.name, gut, 58);
+  ctx.fillStyle = '#8a867e'; ctx.font = '22px -apple-system, Helvetica, sans-serif';
+  ctx.fillText(law.statement || '', gut + ctx.measureText(law.name).width * 1.36 + 28, 58);
+  const frames = [], times = [];
+  for (let k = 0; k < seeds.length; k++) {
+    const t0 = performance.now();
+    const r = law.build(seeds[k], W / H);
+    lens.clear();
+    r.layers.forEach((s, i) => s && s.n && lens.draw(i, s));
+    lens.render(Object.assign({ seed: (seeds[k] * 0.618034) % 1 }, r.look));
+    times.push(Math.round(performance.now() - t0));
+    const x = gut + (k % cols) * (W + gut), y = top + Math.floor(k / cols) * (H + cap);
+    ctx.drawImage(gl, x, y);
+    ctx.fillStyle = '#77736c'; ctx.font = '20px -apple-system, Helvetica, sans-serif';
+    ctx.fillText('seed ' + seeds[k], x, y + H + 28);
+    if (q.get('frames')) frames.push(gl.toDataURL('image/png'));
+  }
+  window.DONE = { sheet: sheet.toDataURL('image/png'), frames, times };
+})().catch(e => { window.DONE = { error: String(e.stack || e) }; });
+</script>

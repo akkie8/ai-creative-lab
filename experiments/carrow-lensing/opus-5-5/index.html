@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrow Lensing</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #060607; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #label {
+    position: fixed; left: 22px; bottom: 18px; margin: 0;
+    font: 400 11px/1 ui-sans-serif, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    letter-spacing: .08em; color: rgba(236, 230, 220, .3);
+    user-select: none; pointer-events: none; transition: opacity .7s ease;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p id="label"></p>
+<script>
+'use strict';
+// Carrow Lensing — light bends toward warmer light.
+// Cool shafts of light cross the dark. Warm glows kindle inside them one by one, and wherever warm light is
+// emitted, cooler light slows down: n = 1 + KAPPA c(T) W(x). Rays follow d/ds(n t) = grad n (traced on the GPU),
+// and the light between neighbouring rays is laid down as soft ray tubes into float layers at four depths,
+// which are defocused, given veiling glare, tone-mapped, grained and dithered.
+(() => {
+const LAW = 'Carrow Lensing';
+const KAPPA = 1 / 12;            // index per unit of warm emission
+const CHROMA = 0.35;             // warmer passing light bends a little more
+const B = 12, K = 128;           // colour bands per shaft, ray tubes per band
+const SIG = 0.0011;              // softness of a single ray tube, in frame heights
+const P_START = -1.25, P_END = 1.25, ZONE_DP = 0.025, SUB_DP = 0.004;
+const LAYER_BLUR = [0.0045, 0.016, 0.04, 0.085], LAYER_SCALE = [1, 0.5, 0.25, 0.25], LAYER_TAPS = [48, 80, 112, 160];
+const KEY_DT = 0.25;             // fixed simulation step between rendered states (s); cross-fading them errs < 0.3/255
+const SHAFT_IN = 10, HOLD = 15, DISSOLVE = 7;
+const MAX_LIGHT_H = 1080;
+
+// ---------- seeded randomness, colour ----------
+function rng(seed) {
+  let a = (seed >>> 0) ^ 0x9e3779b9, b = 0x243f6a88, c = 0xb7e15162, d = (seed * 2654435761) >>> 0;
+  const next = () => {
+    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+    let t = (a + b) | 0; a = b ^ (b >>> 9); b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11); d = (d + 1) | 0; t = (t + d) | 0; c = (c + t) | 0;
+    return (t >>> 0) / 4294967296;
+  };
+  for (let i = 0; i < 16; i++) next();
+  const r = next;
+  r.range = (lo, hi) => lo + (hi - lo) * r();
+  r.int = (lo, hi) => lo + Math.floor(r() * (hi - lo + 1));
+  r.pick = (arr) => arr[Math.floor(r() * arr.length)];
+  return r;
+}
+const mired = (T) => 1e6 / T, fromMired = (m) => 1e6 / m;
+const smoother = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (6 * x - 15) + 10));
+function kelvin(T, wb) {   // colour of light at temperature T under white balance wb (linear sRGB, luminance 1)
+  const f = (T) => {
+    const u = (0.860117757 + 1.54118254e-4 * T + 1.28641212e-7 * T * T) / (1 + 8.42420235e-4 * T + 7.08145163e-7 * T * T);
+    const v = (0.317398726 + 4.22806245e-5 * T + 4.20481691e-8 * T * T) / (1 - 2.89741816e-5 * T + 1.61456053e-7 * T * T);
+    const x = 3 * u / (2 * u - 8 * v + 4), y = 2 * v / (2 * u - 8 * v + 4), X = x / y, Z = (1 - x - y) / y;
+    return [3.2406 * X - 1.5372 - 0.4986 * Z, -0.9689 * X + 1.8758 + 0.0415 * Z, 0.0557 * X - 0.2040 + 1.0570 * Z];
+  };
+  let c = f(T);
+  const w = f(wb); c = c.map((v, i) => Math.max(v / w[i], 0));
+  const Y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  return c.map((v) => v / Y);
+}
+function noise1(R, n) {    // smooth 1D value noise in [-1, 1]
+  const v = Array.from({ length: n }, () => R() * 2 - 1);
+  return (x) => { const i = Math.floor(x), f = x - i, s = f * f * (3 - 2 * f), a = v[((i % n) + n) % n], b = v[(((i + 1) % n) + n) % n]; return a + (b - a) * s; };
+}
+
+// ---------- a picture: shafts, glows and when each glow kindles ----------
+function scene(seed) {
+  const R = rng(seed);
+  const m = R.pick([
+    { w: [1800, 2100], c: [2900, 3400], wb: [3000, 3500] },   // ember: amber and ivory
+    { w: [2400, 2900], c: [6000, 8000], wb: [4800, 5600] },   // dusk: apricot and lilac
+    { w: [3400, 4300], c: [9000, 16000], wb: [5600, 6600] },  // moonlight: pale apricot and blue-grey
+    { w: [1900, 2300], c: [3600, 4400], wb: [3300, 3900] },   // candle: amber and cream
+  ]);
+  const warm = R.range(m.w[0], m.w[1]), cool = R.range(m.c[0], m.c[1]), wb = R.range(m.wb[0], m.wb[1]);
+  const tint = [1, R.range(0.9, 0.985), R.range(0.97, 1.03)], lk = kelvin(cool, wb);
+  const lift = [0.006 * lk[0] + 0.002, 0.006 * lk[1] + 0.002, 0.006 * lk[2] + 0.004];
+  const span = mired(warm) - mired(cool);
+  const shafts = [], glows = [];
+  for (let s = 0, ns = R() < 0.6 ? 1 : 2; s < ns; s++) {
+    let phi = -Math.PI / 2 + R.range(-0.5, 0.5);                       // travelling downward
+    if (s === 1) {   // a second, deeper shaft crosses the first rather than lying beside it
+      const p0 = shafts[0].phi, side = phi < p0 ? -1 : 1;
+      if (Math.abs(phi - p0) < 0.45) phi = Math.abs(p0 + side * 0.45 + Math.PI / 2) <= 0.62 ? p0 + side * 0.45 : p0 - side * 0.45;
+    }
+    const D = [Math.cos(phi), Math.sin(phi)], N = [-D[1], D[0]];
+    const z = s === 0 ? R.range(0.2, 1.2) : R.range(2, 3), P = s === 0 ? 1 : 0.5;
+    const C = [R.range(-0.3, 0.3), 0.5], w = 0.07 + 0.11 * R() * (s === 0 ? 1 : 0.7), mref = mired(cool) + R.range(-0.05, 0.25) * span;
+    const sh = { phi, D, N, C, z, P, glows: [] };
+    for (let k = 0, n = R.int(1, 3); k < n; k++) {
+      const t = R.range(0.25, 0.6), off = R.range(-0.8, 0.8) * w, p = (t - 0.5) * 1.4;
+      R();   // (kept so the first shaft of each seed matches the Phase 1 sketches)
+      const f = R.range(0.25, 0.5);                                   // focal length at full brightness
+      const T = fromMired(mired(warm) - R.range(0, 0.25) * span);
+      const e = P * R.range(0.017, 0.032);                            // total warm light it emits
+      const r = Math.cbrt(e * KAPPA * f / Math.sqrt(2 * Math.PI));    // so that a Gaussian lens of this emission has focal length f
+      const g = { x: C[0] + D[0] * p + N[0] * off, y: C[1] + D[1] * p + N[1] * off, p, r, I: e / (2 * Math.PI * r * r), col: kelvin(T, wb) };
+      sh.glows.push(g); glows.push(g);
+    }
+    // the shaft: B colour bands x K ray tubes across a Gaussian profile
+    const se = w * Math.sqrt(2 / 3), du = 8 * se / K, Rn = rng(seed * 7919 + s * 104729 + 17);
+    const n1 = noise1(Rn, 509), n2 = noise1(Rn, 257), n3 = noise1(Rn, 131);
+    const q = [], wq = []; let ws = 0;
+    for (let b = 0; b < B; b++) { const qb = -2 + 4 * (b + 0.5) / B; q.push(qb); wq.push(Math.exp(-qb * qb / 2)); ws += wq[b]; }
+    sh.c = q.map((qb) => 1 + CHROMA * 0.18 * qb);
+    sh.u0 = -4 * se; sh.du = du;
+    sh.tubes = new Float32Array(B * K * 4);
+    for (let b = 0; b < B; b++) {
+      const col = kelvin(fromMired(mref + 0.18 * span * q[b]), wb);
+      for (let k = 0; k < K; k++) {
+        const u = sh.u0 + (k + 0.5 + b / B) * du;
+        const streak = Math.exp(0.32 * (0.45 * n1(u / 0.009) + 0.35 * n2(u / 0.025) + 0.2 * n3(u / 0.07)));
+        const E = 0.816 * P * Math.exp(-u * u / (2 * se * se)) / (Math.sqrt(2 * Math.PI) * se) * du * wq[b] / ws * streak;
+        sh.tubes.set([col[0] * E, col[1] * E, col[2] * E, SIG], (b * K + k) * 4);
+      }
+    }
+    // planes across the shaft where ray positions are recorded: dense only where the glows can bend light
+    let lo = Infinity, hi = -Infinity;
+    for (const g of sh.glows) { lo = Math.min(lo, g.p - 4.2 * g.r); hi = Math.max(hi, g.p + 4.2 * g.r); }
+    const Pz = Math.ceil((hi - lo) / ZONE_DP) + 1, dz = (hi - lo) / (Pz - 1), nsub = Math.ceil(dz / SUB_DP);
+    Object.assign(sh, { zlo: lo, dz, Pz, nsub, hsub: dz / nsub, planes: Pz + 2 });
+    const i = Math.max(0, Math.min(2, Math.floor(z))), fz = Math.max(0, Math.min(1, z - i));
+    sh.split = [[i, 1 - fz], [i + 1, fz]].filter((x) => x[1] > 0);
+    shafts.push(sh);
+  }
+  // kindling: the glows light one after another, each over about half a minute
+  const Rk = rng(seed ^ 0x5bd1e995), NG = glows.length;
+  const gap = NG > 1 ? Math.min(12, 28 / (NG - 1)) * Rk.range(0.85, 1) : 0;
+  const order = glows.map((_, i) => i);
+  for (let i = NG - 1; i > 0; i--) { const j = Math.floor(Rk() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  let tFull = 0, tFirst = Infinity;
+  order.forEach((gi, j) => {
+    const g = glows[gi];
+    if (NG === 1) { g.t0 = Rk.range(5, 8); g.dur = Rk.range(40, 46); }
+    else { g.t0 = 5 + j * gap + Rk.range(0, 1.5); g.dur = Math.min(Rk.range(30, 35), 64 - g.t0); }
+    tFull = Math.max(tFull, g.t0 + g.dur); tFirst = Math.min(tFirst, g.t0);
+  });
+  const layers = new Set(); shafts.forEach((s) => s.split.forEach(([l]) => layers.add(l)));
+  return { seed, shafts, glows, tint, lift, tFull, tFirst, layers: [...layers] };
+}
+const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+const brightness = (sc, T) => sc.glows.map((g) => ease((T - g.t0) / g.dur));
+const shaftLight = (T) => smoother(T / SHAFT_IN);
+
+// ---------- WebGL2 ----------
+const canvas = document.getElementById('c'), label = document.getElementById('label');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false });
+if (!gl || !gl.getExtension('EXT_color_buffer_float')) { label.textContent = LAW; return; }
+const ACC = gl.getExtension('EXT_float_blend') ? gl.RGBA32F : gl.RGBA16F;
+canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+canvas.addEventListener('webglcontextrestored', () => location.reload());
+
+function tex(w, h, fmt, mip, nearest) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  const lv = mip ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1;
+  gl.texStorage2D(gl.TEXTURE_2D, lv, fmt, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, nearest ? gl.NEAREST : mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return { t, f, w, h };
+}
+const free = (x) => { if (x) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); } };
+function prog(vs, fs) {
+  const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'corner'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  p.u = {}; for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) { const a = gl.getActiveUniform(p, i); p.u[a.name.replace('[0]', '')] = gl.getUniformLocation(p, a.name); }
+  return p;
+}
+const HEAD = '#version 300 es\nprecision highp float; precision highp int; precision highp sampler2D;\n';
+const VQ = HEAD + 'layout(location=0) in vec2 corner; out vec2 uv; void main(){ uv = corner*0.5+0.5; gl_Position = vec4(corner,0,1); }';
+const PHI = `float Phi(float x){ float z = abs(x)*0.70710678, t = 1.0/(1.0+0.3275911*z);
+  float y = 1.0 - (((((1.061405429*t - 1.453152027)*t) + 1.421413741)*t - 0.284496736)*t + 0.254829592)*t*exp(-z*z);
+  return 0.5 + 0.5*sign(x)*y; }`;
+const P = {};
+// ray tracer: texel (i, j) = ray i of the shaft, recorded where it crosses plane j (x, y, direction)
+P.trace = prog(VQ, HEAD + `
+  uniform vec2 C, D, N; uniform float u0, du, zlo, hsub, pS, pE, Bf; uniform int nsub, K1, Pz, nG;
+  uniform vec4 G[3]; uniform float cb[16]; out vec4 o;
+  void deriv(vec2 x, vec2 t, float c, out vec2 dx, out vec2 dt){
+    float W = 0.0; vec2 g = vec2(0);
+    for (int q = 0; q < 3; q++) { if (q >= nG) break; vec2 e = x - G[q].xy; float w = G[q].w*exp(-0.5*dot(e,e)*G[q].z); W += w; g -= w*e*G[q].z; }
+    g *= c; float cd = dot(t, D);
+    dx = t/cd; dt = (g - dot(g,t)*t)/((1.0 + c*W)*cd);           // d/ds(n t) = grad n, parametrised by distance along the shaft
+  }
+  void main(){
+    int i = int(gl_FragCoord.x), j = int(gl_FragCoord.y), band = i / K1, k = i - band*K1;
+    float u = u0 + (float(k) + float(band)/Bf)*du, c = cb[band];
+    if (j == 0) { o = vec4(C + N*u + D*pS, D); return; }
+    vec2 x = C + N*u + D*zlo, t = D, k1x, k1t, k2x, k2t;           // straight until the glows can reach it
+    int steps = min(j - 1, Pz - 1)*nsub;
+    for (int s = 0; s < steps; s++) {
+      deriv(x, t, c, k1x, k1t);
+      vec2 xm = x + 0.5*hsub*k1x, tm = normalize(t + 0.5*hsub*k1t);
+      deriv(xm, tm, c, k2x, k2t);
+      x += hsub*k2x; t = normalize(t + hsub*k2t);
+    }
+    if (j == Pz + 1) x += t*(pE - dot(x - C, D))/dot(t, D);
+    o = vec4(x, t);
+  }`);
+// ray tube: the light between two neighbouring rays, from one plane to the next, with a soft Gaussian edge
+P.tube = prog(HEAD + `
+  layout(location=0) in vec2 corner;
+  uniform sampler2D rays, tubes; uniform int Kt, nT, row; uniform float A, gain, px;
+  out vec2 w; flat out vec4 S; flat out vec4 Wd; flat out vec3 E;
+  void main(){
+    int id = gl_InstanceID, j = id / nT, tb = id - j*nT, band = tb / Kt, k = tb - band*Kt, i0 = band*(Kt + 1) + k;
+    vec2 a0 = texelFetch(rays, ivec2(i0, j), 0).xy, a1 = texelFetch(rays, ivec2(i0 + 1, j), 0).xy;
+    vec2 b0 = texelFetch(rays, ivec2(i0, j + 1), 0).xy, b1 = texelFetch(rays, ivec2(i0 + 1, j + 1), 0).xy;
+    vec4 te = texelFetch(tubes, ivec2(tb, row), 0);
+    vec2 a = 0.5*(a0 + a1), b = 0.5*(b0 + b1), d = b - a; float L = max(length(d), 1e-6);
+    vec2 t = d/L, n = vec2(-t.y, t.x);
+    float w0 = dot(a1 - a0, n), w1 = dot(b1 - b0, n), s = sqrt(te.w*te.w + 0.36*px*px), m = 3.3*s;
+    float hw = 0.5*max(abs(w0), abs(w1)) + m;
+    vec2 q = a + t*mix(-m, L + m, corner.x*0.5 + 0.5) + n*(corner.y*hw);
+    w = q; S = vec4(a, t); Wd = vec4(w0, w1, L, s); E = te.rgb*gain;
+    gl_Position = vec4(q.x*2.0/A, q.y*2.0 - 1.0, 0, 1);
+  }`, HEAD + PHI + `
+  in vec2 w; flat in vec4 S; flat in vec4 Wd; flat in vec3 E; out vec4 o;
+  void main(){
+    vec2 r = w - S.xy; float u = dot(r, S.zw), v = dot(r, vec2(-S.w, S.z)), L = Wd.z, s = Wd.w;
+    float aw = abs(mix(Wd.x, Wd.y, clamp(u/L, 0.0, 1.0)));
+    float across = aw > 0.05*s ? (Phi((v + 0.5*aw)/s) - Phi((v - 0.5*aw)/s))/aw : exp(-0.5*v*v/(s*s))*0.39894228/s;
+    float along = Phi(u/s) - Phi((u - L)/s);
+    o = vec4(E*(across*along), 1.0);
+  }`);
+// a warm glow: a Gaussian of emitted light
+P.spot = prog(HEAD + `
+  layout(location=0) in vec2 corner; uniform vec3 G; uniform float A; out vec2 d;
+  void main(){ d = corner*3.6*G.z; vec2 q = G.xy + d; gl_Position = vec4(q.x*2.0/A, q.y*2.0 - 1.0, 0, 1); }`, HEAD + `
+  in vec2 d; uniform vec3 G, E; out vec4 o;
+  void main(){ o = vec4(E*exp(-0.5*dot(d,d)/(G.z*G.z))/(6.2831853*G.z*G.z), 1.0); }`);
+P.copy = prog(VQ, HEAD + 'in vec2 uv; uniform sampler2D T; out vec4 o; void main(){ o = texture(T, uv); }');
+// defocus: disc-shaped gather over a mip chain, with a faint per-channel fringe
+P.bokeh = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D T; uniform vec2 texel; uniform float Rp, fringe; uniform int N; out vec4 o;
+  void main(){
+    if (Rp < 0.6) { o = texture(T, uv); return; }
+    float lod = max(0.0, log2(Rp*2.2/sqrt(float(N)))); vec3 acc = vec3(0); float ws = 0.0;
+    for (int i = 0; i < 160; i++) {
+      if (i >= N) break;
+      float fi = float(i) + 0.5, rho = sqrt(fi/float(N)), th = fi*2.39996323;
+      vec2 d = vec2(cos(th), sin(th))*rho*Rp*texel; float wt = 1.0 - 0.55*smoothstep(0.78, 1.0, rho);
+      if (fringe > 0.0) {
+        acc.r += textureLod(T, uv + d*(1.0 + fringe), lod).r*wt;
+        acc.g += textureLod(T, uv + d, lod).g*wt;
+        acc.b += textureLod(T, uv + d*(1.0 - fringe), lod).b*wt;
+      } else acc += textureLod(T, uv + d, lod).rgb*wt;
+      ws += wt;
+    }
+    o = vec4(acc/ws, 1.0);
+  }`);
+P.blur = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D T; uniform vec2 dir; uniform float sig; out vec4 o;
+  void main(){ vec3 a = vec3(0); float ws = 0.0;
+    for (int i = -24; i <= 24; i++) { float x = float(i)/24.0*3.0*sig, w = exp(-x*x/(2.0*sig*sig)); a += texture(T, uv + dir*x).rgb*w; ws += w; }
+    o = vec4(a/ws, 1.0); }`);
+P.comp = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D L0, L1, L2, L3; uniform vec4 on; out vec4 o;
+  void main(){ o = vec4(on.x*texture(L0, uv).rgb + on.y*texture(L1, uv).rgb + on.z*texture(L2, uv).rgb + on.w*texture(L3, uv).rgb, 1.0); }`);
+P.bake = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D C, G1, G2; uniform vec2 glare; out vec4 o;
+  void main(){ o = vec4(texture(C, uv).rgb + glare.x*texture(G1, uv).rgb + glare.y*texture(G2, uv).rgb, 1.0); }`);
+P.mix = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D KA, KB, KO; uniform float t, S, a, useO; uniform vec3 g; out vec4 o;
+  void main(){ vec3 n = mix(texture(KA, uv).rgb, texture(KB, uv).rgb, t)*S*g; o = vec4(useO > 0.5 ? mix(texture(KO, uv).rgb, n, a) : n, 1.0); }`);
+// display: interpolate the two nearest states, dissolve from the previous picture, tone-map, grain, dither
+P.final = prog(VQ, HEAD + `
+  in vec2 uv; uniform sampler2D KA, KB, KO; uniform float t, S, a, expo, grain, vign; uniform vec3 tint, lift, liftO; uniform vec2 res; out vec4 o;
+  vec3 bs(sampler2D T, vec2 p){   // cubic B-spline upsampling from the light buffer
+    vec2 ts = vec2(textureSize(T, 0)), x = p*ts - 0.5, i = floor(x), f = x - i;
+    vec2 w0 = (1.0-f)*(1.0-f)*(1.0-f)/6.0, w1 = (4.0 - 6.0*f*f + 3.0*f*f*f)/6.0, w3 = f*f*f/6.0, w2 = 1.0 - w0 - w1 - w3;
+    vec2 g0 = w0 + w1, g1 = w2 + w3, h0 = (i - 0.5 + w1/g0)/ts, h1 = (i + 1.5 + w3/g1)/ts;
+    return g0.y*(g0.x*texture(T, h0).rgb + g1.x*texture(T, vec2(h1.x, h0.y)).rgb) + g1.y*(g0.x*texture(T, vec2(h0.x, h1.y)).rgb + g1.x*texture(T, h1).rgb);
+  }
+  float h(vec2 p){ vec3 q = fract(vec3(p.xyx)*vec3(.1031, .1030, .0973) + 0.37); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y)*q.z); }
+  float gn(vec2 p){ return (h(p) + h(p + 17.1) + h(p + 41.7) + h(p + 73.3) - 2.0)*1.73; }
+  vec3 srgb(vec3 c){ return mix(c*12.92, 1.055*pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
+  vec3 tone(vec3 c, vec3 lf){      // soft shoulder, mostly hue-preserving, a gentle path to white only in the brightest light
+    float Y0 = dot(c, vec3(0.2126, 0.7152, 0.0722)), Yt = 1.0 - exp(-Y0);
+    c = mix(c*(Yt/max(Y0, 1e-6)), 1.0 - exp(-c), 0.3);
+    c = mix(c, vec3(Yt), smoothstep(0.55, 1.0, Yt)*0.55);
+    float mx = max(c.r, max(c.g, c.b)); if (mx > 1.0) c = mix(c/mx, vec3(1.0), 1.0 - 1.0/mx);
+    return srgb(clamp(lf + (1.0 - lf)*c, 0.0, 1.0));
+  }
+  void main(){
+    vec2 q = uv - 0.5; q.x *= res.x/res.y; float vg = 1.0 - vign*dot(q, q);
+    vec3 c = tone(mix(bs(KA, uv), bs(KB, uv), t)*(S*expo*vg)*tint, lift);
+    if (a < 1.0) c = mix(tone(bs(KO, uv)*vg, liftO), c, a);
+    vec2 px = gl_FragCoord.xy;
+    float n = 0.62*gn(px) + 0.38*gn(floor(px*0.5) + 311.0), Y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c += grain*n*(0.35 + 2.2*Y*(1.0 - Y));                          // fine, slightly clumped grain
+    c += (h(px + 7.7) + h(px + 91.3) - 1.0)/255.0;                   // TPDF dither
+    o = vec4(clamp(c, 0.0, 1.0), 1.0);
+  }`);
+const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+function pass(p, target, setup, w, h) {
+  gl.useProgram(p); gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.f : null);
+  gl.viewport(0, 0, w ?? (target ? target.w : canvas.width), h ?? (target ? target.h : canvas.height));
+  setup(p); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+const bind = (unit, t, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(loc, unit); };
+
+// ---------- light buffers (sized to the screen) ----------
+let LW, LH, A, RT = null;
+function allocate() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(2, Math.round(innerWidth * dpr)); canvas.height = Math.max(2, Math.round(innerHeight * dpr));
+  A = canvas.width / canvas.height; LH = Math.min(MAX_LIGHT_H, canvas.height); LW = Math.round(LH * A);
+  if (RT) Object.values(RT).flat().forEach((x) => x && x.t && free(x));
+  RT = { acc: [], src: [], out: [] };
+  LAYER_SCALE.forEach((s, i) => {   // accumulation is read texel for texel (float32 is not filterable everywhere)
+    const w = Math.max(8, Math.round(LW * s)), h = Math.max(8, Math.round(LH * s));
+    RT.acc[i] = tex(w, h, ACC, false, true); RT.src[i] = tex(w, h, gl.RGBA16F, true); RT.out[i] = tex(w, h, gl.RGBA16F);
+  });
+  RT.comp = [tex(LW, LH, gl.RGBA16F)];
+  const q = (d) => [tex(Math.ceil(LW / d), Math.ceil(LH / d), gl.RGBA16F), tex(Math.ceil(LW / d), Math.ceil(LH / d), gl.RGBA16F)];
+  RT.g1 = q(4); RT.g2 = q(16);
+  RT.old = [tex(LW, LH, gl.RGBA16F)]; RT.tmp = [tex(LW, LH, gl.RGBA16F)];
+}
+
+// per-scene GPU data: recorded rays and tube energies for each shaft
+function upload(sc) {
+  for (const sh of sc.shafts) {
+    sh.rayTex = tex(B * (K + 1), sh.planes, gl.RGBA32F, false, true);
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, B * K, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, B * K, 1, gl.RGBA, gl.FLOAT, sh.tubes);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    sh.tubeTex = t;
+  }
+}
+function release(sc) { if (sc) for (const sh of sc.shafts) { free(sh.rayTex); gl.deleteTexture(sh.tubeTex); } }
+
+// render the state of the picture at glow brightnesses b into a linear HDR texture
+function renderState(sc, b, dst) {
+  for (const l of sc.layers) { gl.bindFramebuffer(gl.FRAMEBUFFER, RT.acc[l].f); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  let gi = 0;
+  for (const sh of sc.shafts) {
+    const G = new Float32Array(12); let nG = 0;
+    const lit = sh.glows.map((g) => { const bb = b[gi++]; if (bb > 0) G.set([g.x, g.y, 1 / (g.r * g.r), KAPPA * g.I * bb], 4 * nG++); return bb; });
+    pass(P.trace, sh.rayTex, (p) => {
+      gl.uniform2fv(p.u.C, sh.C); gl.uniform2fv(p.u.D, sh.D); gl.uniform2fv(p.u.N, sh.N);
+      gl.uniform1f(p.u.u0, sh.u0); gl.uniform1f(p.u.du, sh.du); gl.uniform1f(p.u.zlo, sh.zlo); gl.uniform1f(p.u.hsub, sh.hsub);
+      gl.uniform1f(p.u.pS, P_START); gl.uniform1f(p.u.pE, P_END); gl.uniform1f(p.u.Bf, B);
+      gl.uniform1i(p.u.nsub, sh.nsub); gl.uniform1i(p.u.K1, K + 1); gl.uniform1i(p.u.Pz, sh.Pz); gl.uniform1i(p.u.nG, nG);
+      gl.uniform4fv(p.u.G, G); gl.uniform1fv(p.u.cb, new Float32Array(16).fill(1).map((v, i) => sh.c[i] ?? 1));
+    });
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    for (const [l, gain] of sh.split) {
+      const t = RT.acc[l], px = 1 / t.h;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.f); gl.viewport(0, 0, t.w, t.h);
+      gl.useProgram(P.tube);
+      bind(0, sh.rayTex.t, P.tube.u.rays); bind(1, sh.tubeTex, P.tube.u.tubes);
+      gl.uniform1i(P.tube.u.Kt, K); gl.uniform1i(P.tube.u.nT, B * K); gl.uniform1i(P.tube.u.row, 0);
+      gl.uniform1f(P.tube.u.A, A); gl.uniform1f(P.tube.u.gain, gain); gl.uniform1f(P.tube.u.px, px);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, B * K * (sh.planes - 1));
+      gl.useProgram(P.spot); gl.uniform1f(P.spot.u.A, A);
+      sh.glows.forEach((g, k) => {
+        if (lit[k] <= 0) return;
+        const s = Math.sqrt(g.r * g.r + 0.36 * px * px), e = g.I * lit[k] * 2 * Math.PI * g.r * g.r * gain;
+        gl.uniform3f(P.spot.u.G, g.x, g.y, s); gl.uniform3f(P.spot.u.E, g.col[0] * e, g.col[1] * e, g.col[2] * e);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      });
+    }
+    gl.disable(gl.BLEND);
+  }
+  const on = [0, 0, 0, 0];   // (the colour fringe is sub-pixel on the two sharper layers, so they gather once per tap)
+  for (const l of sc.layers) {
+    on[l] = 1;
+    pass(P.copy, RT.src[l], (p) => bind(0, RT.acc[l].t, p.u.T));
+    gl.bindTexture(gl.TEXTURE_2D, RT.src[l].t); gl.generateMipmap(gl.TEXTURE_2D);
+    pass(P.bokeh, RT.out[l], (p) => {
+      bind(0, RT.src[l].t, p.u.T); gl.uniform2f(p.u.texel, 1 / RT.src[l].w, 1 / RT.src[l].h);
+      gl.uniform1f(p.u.Rp, LAYER_BLUR[l] * RT.src[l].h); gl.uniform1f(p.u.fringe, l < 2 ? 0 : 0.02); gl.uniform1i(p.u.N, LAYER_TAPS[l]);
+    });
+  }
+  pass(P.comp, RT.comp[0], (p) => { [p.u.L0, p.u.L1, p.u.L2, p.u.L3].forEach((u, i) => bind(i, RT.out[i].t, u)); gl.uniform4fv(p.u.on, on); });
+  const blurTo = (src, pair, sigFrac) => {     // veiling glare
+    pass(P.copy, pair[0], (p) => bind(0, src.t, p.u.T));
+    const sx = sigFrac * pair[0].h;
+    pass(P.blur, pair[1], (p) => { bind(0, pair[0].t, p.u.T); gl.uniform2f(p.u.dir, 1 / pair[0].w, 0); gl.uniform1f(p.u.sig, sx); });
+    pass(P.blur, pair[0], (p) => { bind(0, pair[1].t, p.u.T); gl.uniform2f(p.u.dir, 0, 1 / pair[0].h); gl.uniform1f(p.u.sig, sx); });
+  };
+  blurTo(RT.comp[0], RT.g1, 0.035); blurTo(RT.g1[0], RT.g2, 0.14);
+  pass(P.bake, dst, (p) => { bind(0, RT.comp[0].t, p.u.C); bind(1, RT.g1[0].t, p.u.G1); bind(2, RT.g2[0].t, p.u.G2); gl.uniform2f(p.u.glare, 0.14, 0.1); });
+}
+
+// exposure: fixed per picture, from its finished state (the 99.7th luminance percentile of the central 3:2 region)
+function measure(src) {
+  const g = RT.g1[1];
+  pass(P.copy, g, (p) => bind(0, src.t, p.u.T));
+  const px = new Float32Array(g.w * g.h * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, g.f); gl.readPixels(0, 0, g.w, g.h, gl.RGBA, gl.FLOAT, px);
+  const Y = [];
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    if (Math.abs(((x + 0.5) / g.w - 0.5) * A) > 0.75) continue;
+    const i = (y * g.w + x) * 4; Y.push(0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]);
+  }
+  Y.sort((a, b) => a - b);
+  return 2.0 / Math.max(Y[Math.min(Y.length - 1, Math.floor(0.997 * Y.length))], 1e-9);
+}
+
+// ---------- the running picture ----------
+const cur = { sc: null, T: 0, expo: 1, keys: new Map(), fin: -1 };
+const old = { p: 1, a: 1, liftO: [0, 0, 0] };   // p: dissolve progress, a: weight of the new picture
+let frozen = false, dirty = true;
+const keyIndex = (sc, k) => (k * KEY_DT <= sc.tFirst ? 0 : Math.min(k, cur.fin));
+function key(k) {
+  const kk = keyIndex(cur.sc, k);
+  let e = cur.keys.get(kk);
+  if (!e) {
+    e = tex(LW, LH, gl.RGBA16F);
+    renderState(cur.sc, brightness(cur.sc, kk * KEY_DT), e);
+    cur.keys.set(kk, e);
+  }
+  return e;
+}
+const has = (k) => cur.keys.has(keyIndex(cur.sc, k));
+function evict(keep) {
+  for (const [k, e] of cur.keys) if (!keep.includes(k) && k !== cur.fin && k !== 0) { free(e); cur.keys.delete(k); }
+}
+function start(seed) {
+  if (cur.sc) {   // freeze what is on screen as the picture to dissolve from
+    const k0 = Math.floor(cur.T / KEY_DT), ka = key(k0), kb = key(k0 + 1);
+    const g = cur.sc.tint.map((v) => v * cur.expo);
+    pass(P.mix, RT.tmp[0], (p) => {
+      bind(0, ka.t, p.u.KA); bind(1, kb.t, p.u.KB); bind(2, RT.old[0].t, p.u.KO);
+      gl.uniform1f(p.u.t, cur.T / KEY_DT - k0); gl.uniform1f(p.u.S, shaftLight(cur.T)); gl.uniform3fv(p.u.g, g);
+      gl.uniform1f(p.u.a, old.a); gl.uniform1f(p.u.useO, old.a < 1 ? 1 : 0);
+    });
+    [RT.old, RT.tmp] = [RT.tmp, RT.old];
+    old.liftO = old.a < 1 ? old.liftO.map((v, i) => v + (cur.sc.lift[i] - v) * old.a) : cur.sc.lift.slice();
+    old.p = 0; old.a = 0;
+    for (const e of cur.keys.values()) free(e);
+    cur.keys.clear(); release(cur.sc);
+  }
+  cur.sc = scene(seed); upload(cur.sc);
+  cur.T = 0; cur.fin = Math.ceil(cur.sc.tFull / KEY_DT);
+  cur.expo = measure(key(cur.fin));
+  dirty = true;
+  if (location.hash !== '#seed=' + seed) history.replaceState(null, '', '#seed=' + seed);
+  label.style.opacity = 0;
+  setTimeout(() => { label.textContent = LAW + ' · ' + seed; label.style.opacity = 1; }, label.textContent ? 700 : 0);
+}
+function draw() {
+  const T = cur.T, k0 = Math.floor(T / KEY_DT), ka = key(k0), kb = key(k0 + 1);
+  pass(P.final, null, (p) => {
+    bind(0, ka.t, p.u.KA); bind(1, kb.t, p.u.KB); bind(2, RT.old[0].t, p.u.KO);
+    gl.uniform1f(p.u.t, T / KEY_DT - k0); gl.uniform1f(p.u.S, shaftLight(T)); gl.uniform1f(p.u.a, old.a);
+    gl.uniform1f(p.u.expo, cur.expo); gl.uniform1f(p.u.grain, 0.022); gl.uniform1f(p.u.vign, 0.3);
+    gl.uniform3fv(p.u.tint, cur.sc.tint); gl.uniform3fv(p.u.lift, cur.sc.lift); gl.uniform3fv(p.u.liftO, old.liftO);
+    gl.uniform2f(p.u.res, canvas.width, canvas.height);
+  });
+}
+
+let last = performance.now(), lastDraw = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (frozen) return;
+  const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now;
+  if (cur.T >= cur.sc.tFull + HOLD) { start(cur.sc.seed + 1 >>> 0); return; }
+  // the simulation advances in fixed steps; it waits rather than skip if a state is not ready yet
+  let T = cur.T + dt, budget = 2;
+  const k = Math.floor(T / KEY_DT);
+  for (const kk of [k, k + 1, k + 2]) if (!has(kk) && budget > 0) { key(kk); budget--; }
+  if (!has(k) || !has(k + 1)) T = Math.min(T, Math.floor(cur.T / KEY_DT + 1) * KEY_DT - 1e-6);
+  evict([keyIndex(cur.sc, k), keyIndex(cur.sc, k + 1), keyIndex(cur.sc, k + 2)]);
+  const changing = T < cur.sc.tFull + KEY_DT || old.p < 1;
+  cur.T = T;
+  if (old.p < 1) { old.p = Math.min(1, old.p + dt / DISSOLVE); old.a = smoother(old.p); }
+  if ((changing && now - lastDraw > 30) || dirty) { draw(); lastDraw = now; dirty = false; }
+}
+
+// ---------- seed from the URL, input ----------
+const hashSeed = () => { const m = /seed=(\d+)/.exec(location.hash); return m ? Number(m[1]) >>> 0 : null; };
+let resizeTimer = 0;
+addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => {
+  for (const e of cur.keys.values()) free(e); cur.keys.clear();
+  allocate(); old.p = old.a = 1; cur.expo = measure(key(cur.fin)); dirty = true;
+}, 250); });
+addEventListener('hashchange', () => { const s = hashSeed(); if (s !== null && s !== cur.sc.seed) start(s); });
+addEventListener('pointerdown', () => start(cur.sc.seed + 1 >>> 0));
+addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) start(cur.sc.seed + 1 >>> 0); } });
+
+// stills for documentation: carrow.still(seed, seconds) renders that moment and returns a PNG data URL
+window.carrow = {
+  still(seed, T) {
+    frozen = true;
+    if (cur.sc.seed !== seed) start(seed);
+    old.p = old.a = 1;
+    cur.T = Math.max(0, T); draw();
+    return canvas.toDataURL('image/png');
+  },
+  info() { return { seed: cur.sc.seed, tFull: cur.sc.tFull, T: cur.T, keys: cur.keys.size, light: [LW, LH], canvas: [canvas.width, canvas.height] }; },
+  resume() { frozen = false; last = performance.now(); },
+};
+
+allocate();
+let seed = hashSeed();
+if (seed === null) seed = 1 + Math.floor(Math.random() * 999999);
+start(seed); old.p = old.a = 1; old.liftO = cur.sc.lift.slice();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
