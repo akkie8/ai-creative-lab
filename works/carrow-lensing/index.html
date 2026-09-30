@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carrow Lensing — AI Creative Lab</title>
+  <meta name="description" content="Claude Opus 5.5（Claude Code）が発明した光の法則「光は、より暖かい光のほうへ曲がる」だけで描く生成アート。暗闇から約1分かけて、柔らかい光の炎が育つ。実物、法則、制作条件、プロンプトと観察の記録。">
+  <link rel="canonical" href="https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:title" content="Carrow Lensing — AI Creative Lab">
+  <meta property="og:description" content="Claude Opus 5.5（Claude Code）が発明した光の法則「光は、より暖かい光のほうへ曲がる」だけで描く生成アート。暗闇から約1分かけて、柔らかい光の炎が育つ。実物、法則、制作条件、プロンプトと観察の記録。">
+  <meta property="og:url" content="https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/">
+  <meta property="og:image" content="https://akkie8.github.io/ai-creative-lab/assets/ogp.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">作品と実験記録へ</a>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="../../index.html">AI Creative Lab</a>
+      <nav aria-label="メインナビゲーション"><a href="../../index.html#experiments">Experiments</a><a href="../../index.html#about">About</a><a href="https://github.com/akkie8/ai-creative-lab">GitHub ↗</a></nav>
+    </header>
+    <main id="main">
+<section class="hero"><p class="eyebrow">Claude Opus 5.5（Claude Code） · 2026-09-30</p><h1>Carrow Lensing</h1><p class="subtitle">光が、より暖かい光のほうへ曲がる宇宙。</p></section>
+<section class="note-section" aria-labelledby="question-title"><h2 id="question-title">Question<br>問い</h2><div class="prose"><p>この宇宙にない光の法則をひとつ、AIに発明させる。その法則だけで、ピントの合っていない写真のような、柔らかい光とグラデーションの絵が描けるか。新しさより美しさを優先させたとき、どんな法則が選ばれるか。</p></div></section>
+<section class="exhibition" aria-labelledby="work-title"><div class="section-head"><h2 id="work-title">The work</h2><span>CLAUDE OPUS 5.5 / 2026</span></div>
+<div class="media"><iframe src="../../experiments/carrow-lensing/opus-5-5/index.html#seed=24" title="Carrow Lensing（作品のHTMLをそのまま表示）" allow="fullscreen"></iframe></div>
+<div class="label"><div><h3>Carrow Lensing</h3><p>Soft light under an invented law</p><a class="button" href="../../experiments/carrow-lensing/opus-5-5/index.html">作品を開く ↗</a></div><div><dl><div><dt>Model</dt><dd>Claude Opus 5.5（Claude Code）</dd></div><div><dt>Created</dt><dd>2026-09-30</dd></div><div><dt>Format</dt><dd>シードごとに約1分で育つ / WebGL2 / Single HTML</dd></div></dl><ul class="tags" aria-label="技法"><li>Generative art</li><li>WebGL2</li><li>Ray tracing</li><li>Invented physics</li><li>Single HTML</li></ul></div></div>
+<p class="note">WebGL2対応ブラウザで開くとすぐに始まります。暗闇から45〜64秒かけて絵が育ち、15秒止まったあと、次のシードへゆっくり溶け替わります。クリックかスペースキーで次のシードへ進みます。画面の文字は左下の法則名とシード番号だけです。おすすめのシード：<a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=22">#seed=22 ↗</a> <a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=24">#seed=24 ↗</a> <a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=1">#seed=1 ↗</a></p></section>
+<section class="note-section" aria-labelledby="law-title"><h2 id="law-title">Law<br>法則</h2><div class="prose"><p><strong>Light bends toward warmer light, so every warm glow gathers the light passing it into a soft flame behind it.</strong><br>光は、より暖かい光のほうへ曲がる。だから暖かい光の玉は、そばを通る光を集めて、自分のうしろに柔らかい炎をつくる。</p><h3>定義</h3><p>暖かい光が出ているところでは、それより冷たい光が遅くなります。通る光が感じる屈折率は <code>n = 1 + κ·c(T)·W(x)</code>。<code>W</code> は光の玉が出す暖かい光のガウス分布で、玉はそれぞれ30〜46秒かけて灯ります。<code>κ = 1/12</code>。<code>c(T)</code> は通る光自身の色温度で決まる係数で、暖かい光ほど少し強く曲がります。光線は <code>d/ds(n t̂) = ∇n</code> に従って進み、それ以外に光を動かすものはありません。ノイズはシードごとの配置と、筋の中のかすかなむらにだけ使っています。</p><h3>ありえない理由</h3><p>私たちの宇宙では、真空中のマクスウェル方程式は線形で、2本の光は互いに気づかずにすれ違います。屈折率は物質が持つもので、ほかの光の色が決めるものではありません。</p><h3>光がどう見えるか</h3><p>ガウス型の屈折率は、ひどい球面収差のあるレンズになります。中心寄りの光は近くで、外寄りの光は遠くで焦点を結ぶので、焦点は点にならず、細長く柔らかい炎の形（コースティクス）になります。暖かい色ほど少し手前で焦点を結ぶため、炎の縁にかすかな暖色と寒色の分かれが出ます。玉がゆっくり灯るので、見ている間に筋が玉のほうへ傾き、炎が育っていきます。</p><p class="note">英語の定義書：<a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/opus-5-5/LAW.md">LAW.md ↗</a></p></div></section>
+<section class="note-section" aria-labelledby="conditions-title"><h2 id="conditions-title">Conditions<br>制作条件</h2><div class="prose"><p>Claude Code（Opus 5.5）にプロンプトを1回送りました。プロンプトは2段階で、Phase 1 ではClaudeが法則を5つ発明して、各6シードのコンタクトシートを出して止まります。人が手を入れたのは、その中からcaustic（Carrow Lensing）を選んだ1回だけです。Phase 2 はClaudeが本番の作品と定義書を作りました。ギャラリーへの追加は、作品の納品後に別の依頼として行いました。</p><p>HTML 1ファイルで動作し、画像・ライブラリ・通信はありません。光線はWebGL2のシェーダで追い、浮動小数点のバッファにためて、トーンマップとディザをかけて表示します。</p><h3>Claudeが行った修正</h3><ul><li>Phase 1 で6つの法則を「美しくない」として差し替えた（渦巻きがペイズリーの塊になる、光の放射がレンズフレアに見える、など）。</li><li>Phase 1 の試作はCPUで光線を追って1本ずつ柔らかい線として描いていたため、GPUの光線追跡と「光の管」の描画に作り直した。隣り合う光線の間を面として塗るので、光のエネルギーが保たれ、光線が交差するところもつぶれない。</li><li>32bit浮動小数点のテクスチャを線形補間で読んでいたため画面が真っ黒になった。最近傍で読むよう修正。</li><li>最速のシードが43秒で完成していたため、玉の灯る時間を延ばし、5000シードで45〜64秒に収めた（完成した絵は変わらない）。</li></ul></div></section>
+<section class="note-section" aria-labelledby="metrics-title"><h2 id="metrics-title">Measurements<br>計測値</h2><div class="prose"><p>時間と使用量は、作品を作ったClaude Codeセッションのログ（API呼び出しごとの使用量）を Phase ごとに合計した値です。人が法則を選ぶまでの待ち時間と、ギャラリー追加の作業は含みません。生のログはこのリポジトリには含まれていません。</p><dl><div><dt>モデルID</dt><dd><code>claude-opus-5-5</code></dd></div><div><dt>Effort</dt><dd>xhigh（セッション設定）</dd></div><div><dt>Human edits</dt><dd>0（法則を1つ選んだだけ）</dd></div><div><dt>生成時間</dt><dd>78m49s（Phase 1 36m50s + Phase 2 41m59s）</dd></div><div><dt>モデル呼び出し回数</dt><dd>148（Phase 1 49 + Phase 2 99）</dd></div><div><dt>Input tokens</dt><dd>23,572,377</dd></div><div><dt>Cached input / cache read</dt><dd>22,862,201</dd></div><div><dt>キャッシュ書込</dt><dd>709,880</dd></div><div><dt>通常入力（キャッシュ書込を除く）</dt><dd>296</dd></div><div><dt>Output tokens</dt><dd>373,622（Phase 1 181,698 + Phase 2 191,924）</dd></div><div><dt>Total processed tokens</dt><dd>23,945,999</dd></div><div><dt>コスト</dt><dd>記録なし</dd></div><div><dt>HTMLの実測行数</dt><dd>522行</dd></div><div><dt>HTMLの実測サイズ</dt><dd>31,213 bytes</dd></div><div><dt>合格したシード</dt><dd>24シード中22（「壁に飾りたいか」で判定）</dd></div></dl><p>入力は呼び出しごとに再送された履歴を含む累計で、Cached inputとキャッシュ書込はInputの内数です。Output tokensはthinkingを含みます。Total = Input + Output。</p><h3>時間の注記</h3><p>Phase 1 は 12:54:01Z（セッション作成）→ 13:30:51Z（コンタクトシートの報告）、Phase 2 は 13:51:13Z（法則の選択を受信）→ 14:33:12Z（納品の報告）です。途中でコンテキスト上限による自動要約が入っています。</p><h3>フレーム時間</h3><p>Apple M3のMac上のヘッドレスChromium（Metal）で計測しました。1080pの光の状態を1回計算するのに約19 ms、これをシミュレーション時間0.25秒ごとに行い、間は補間します（GPUの約7%）。表示は1フレーム1〜2 msで、60fpsを保ちました。通常のブラウザウィンドウでは未計測です。</p><p class="note">出典は<a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/README.md">作品のREADME</a>です。行数とバイト数は収録HTMLを実測しています。</p></div></section>
+<section class="note-section" aria-labelledby="prompt-title"><h2 id="prompt-title">Prompt<br>プロンプト全文</h2><div class="prose"><h3>要点</h3><p>絵は「光だけ」。ピントの合っていない光とグラデーションで描くことを固定し、光のふるまいについての法則を1つだけ発明させます。目指す水準として Tillmans の Freischwimmer、杉本博司、Richter、Turrell、Rothko を挙げ、ネオン・レンズフレア・虹色・くっきりした光の線・バンディング・濁ったグレーを失格にしています。Phase 1 で5つの法則を出して止まり、人が1つ選んでから Phase 2 で本番を作る2段階です。納品前に12シード以上を描き、8つ以上が「壁に飾りたいか」に合格するまで続けるよう求めています。</p><pre>Create a generative artwork made only of light — soft, out-of-focus light and long, smooth gradients, as if photographed through a lens that is not quite in focus.
+
+The light obeys one law of physics that does not exist in our universe. You invent that law.
+
+The work has two phases. In Phase 1 you explore and then stop. Do not start Phase 2 until I have chosen.
+
+Do not ask questions before Phase 1. Make every creative and technical decision yourself.
+
+⸻
+
+BEAUTY COMES FIRST
+
+I do not want anything that is not beautiful. A new law that produces an ugly picture is a failure. Novelty is the entry ticket; beauty is the goal.
+
+⸻
+
+THE LOOK (fixed)
+
+The medium is decided. The law must work inside it.
+
+* Light, not objects: glows, halos, bokeh discs, soft beams, veils, light seeping through haze.
+* Nothing is in sharp focus. Edges dissolve. Depth is expressed through defocus.
+* Gradients carry the image: long, smooth, banding-free transitions of tone and colour.
+* Photographic qualities: highlights roll off softly instead of clipping, a fine film grain, faint chromatic fringes in the bokeh.
+* Large calm areas of near-darkness or pale haze, so the light has room to breathe.
+* A restrained palette: two or three related hues and their mixtures. Colour comes from the temperature of the light and from what the law does to it.
+
+The level and mood to aim for: Wolfgang Tillmans' Freischwimmer series, Hiroshi Sugimoto's out-of-focus architecture and seascapes, Gerhard Richter's blurred paintings, James Turrell, Mark Rothko. It must feel like a photograph of a real phenomenon, not a screensaver.
+
+Reject any result with:
+
+* neon colours, lens-flare presets, rainbow hues
+* hard-edged glowing lines or sharp particles
+* confetti-like dots scattered over the image
+* visible banding in gradients
+* muddy grey or dirty mixtures
+* the look of “a glow effect on a black background”
+
+⸻
+
+THE LAW
+
+Invent one rule for how light behaves that is not true in our world — how it travels, bends, pools, mixes, fades, remembers, or how focus itself works. It must be precise and internally consistent.
+
+Give it:
+
+* a name, as if it were a discovered effect or named after a fictional scientist
+* a one-sentence statement that a non-scientist can understand
+* a precise definition (quantities, equations or pseudocode) that the implementation follows exactly
+
+The picture must come from the law acting on light. Do not paint a pleasant gradient and then justify it with the law.
+
+A viewer who watches for about 30 seconds should begin to sense what the rule is.
+
+Forbidden as the core mechanism — also when renamed or disguised:
+
+* flow fields, Perlin / simplex / curl noise advection
+* reaction-diffusion
+* Voronoi, circle packing
+* cellular automata
+* strange attractors, fractals
+* ordinary, physically correct optics (real refraction, real lens blur, real scattering) without any invented rule
+
+Noise and randomness may be used only for initial conditions and small perturbations, never as the thing that makes the picture.
+
+⸻
+
+PHASE 1 — EXPLORE, THEN STOP
+
+1. Invent five laws of light that are genuinely different from each other.
+2. Prototype each one in the target medium and render a contact sheet per law: six different seeds in their finished state, each image at least 1200 px wide. Save them as PNG files in ./candidates/.
+3. Look at every image honestly. Replace any law whose pictures are not beautiful before you show me anything. Do not show me anything you would not hang on a wall.
+4. Write ./candidates/README.md: for each law, its name, the one-sentence statement, and one sentence on what makes its pictures beautiful.
+5. Stop. Tell me where the contact sheets are and wait for me to choose one law.
+
+⸻
+
+PHASE 2 — BUILD THE CHOSEN LAW
+
+Generative behaviour:
+
+* Each run starts from a seed. The same seed must always grow the same final image, regardless of frame rate or screen size (fixed simulation timestep, seeded PRNG).
+* Different seeds produce clearly different pictures that are still recognisably governed by the same law.
+* Read the seed from the URL hash (#seed=123). If there is none, pick one at random and write it to the hash.
+* The picture develops slowly from darkness or haze to its finished state over about 45–75 seconds, holds still for about 15 seconds, then dissolves gently into the next seed.
+* Clicking anywhere or pressing Space moves to the next seed.
+
+The only text on screen is a small, quiet label in one corner: the law's name and the seed number. No other UI, buttons, instructions, or debug overlays.
+
+Technical requirements:
+
+* A single index.html using only HTML, CSS and JavaScript. WebGL2 is recommended.
+* Accumulate light in floating-point render targets, tone-map it, and dither before output so that gradients never band.
+* No external images, videos, fonts, libraries, frameworks, APIs, or network requests.
+* Fill the browser viewport, stay coherent across common desktop screen sizes, render crisply on high-DPI screens.
+* Run smoothly without excessive CPU or GPU usage. Run immediately when the file is opened.
+
+LAW.md, in plain language, at most one page:
+
+* the name and the one-sentence statement
+* the precise definition
+* why it cannot exist in our universe
+* what the light does under it, and why that looks the way it does
+* three seeds you consider the best, and one sentence on each
+
+Before delivering:
+
+Render at least twelve seeds to the finished state at full resolution and look at 1:1 crops as well. Ask of every seed: would someone pay to hang this on a wall? If fewer than eight of twelve pass, keep working. Then watch the development of a few seeds from start to finish.
+
+Start Phase 1 now.</pre><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/prompt.md">プロンプトの記録 ↗</a></div></section>
+<section class="note-section" aria-labelledby="phase1-title"><h2 id="phase1-title">Phase 1<br>5つの法則</h2><div class="prose"><p>Claudeが最初に出した5つの法則です。各シートはシード1〜6の完成状態で、選別はしていません。</p><div class="table-wrap" role="region" tabindex="0" aria-label="Phase 1 の5つの法則"><table><caption>Phase 1 の5つの法則</caption><thead><tr><th scope="col">法則</th><th scope="col">一文</th></tr></thead><tbody><tr><th scope="row"><a href="../../experiments/carrow-lensing/phase1/strata.jpg">Maren Stratification</a></th><td>光は自分の色に合った高さまで昇るか沈むかして、横に広がる。</td></tr><tr><th scope="row"><a href="../../experiments/carrow-lensing/phase1/drape.jpg">Hallam Tension</a></th><td>光は光源から光源へしか進まず、その間に垂れ下がる。暖かい光はたるみ、冷たい光は弧を描く。</td></tr><tr><th scope="row"><a href="../../experiments/carrow-lensing/phase1/bend.jpg">Lindqvist Deflection</a></th><td>暖かい光は右へ、冷たい光は左へ曲がり、光の筋は弧の花のように開く。</td></tr><tr><th scope="row"><a href="../../experiments/carrow-lensing/phase1/braid.jpg">Ferrand Braid</a></th><td>光の筋はほどけては結び直す。色が一定のリズムで分かれ、白い結び目で出会う。</td></tr><tr><th scope="row"><a href="../../experiments/carrow-lensing/phase1/caustic.jpg">Carrow Lensing</a>（選ばれた法則）</th><td>光はより暖かい光のほうへ曲がり、暖かい光の玉は、そばを通る光を集めてうしろに柔らかい炎をつくる。</td></tr></tbody></table></div><p class="note">各法則の定義と、差し替えた6つの法則：<a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/phase1/README.md">phase1/README.md ↗</a></p></div></section>
+<section class="note-section" aria-labelledby="notes-title"><h2 id="notes-title">Observations<br>観察</h2><div class="prose"><div class="table-wrap" role="region" tabindex="0" aria-label="1シードの流れ"><table><caption>1シードの流れ</caption><thead><tr><th scope="col">秒</th><th scope="col">起きること</th></tr></thead><tbody><tr><th scope="row">0–10</th><td>暗闇から、まっすぐな光の筋が浮かび上がる</td></tr><tr><th scope="row">5–8</th><td>最初の玉が灯り始める。玉が複数あるときは、数秒〜12秒おきに順に灯る</td></tr><tr><th scope="row">13–18</th><td>筋が玉のほうへ傾き、玉のうしろに焦点ができ始める。ここで法則が見えてくる</td></tr><tr><th scope="row">45–64</th><td>すべての玉が灯りきり、炎が完成する（シードによって異なる）</td></tr><tr><th scope="row">+15</th><td>そのまま静止</td></tr><tr><th scope="row">+7</th><td>次のシードへゆっくり溶け替わる</td></tr></tbody></table></div><h3>おすすめの3シード</h3><ul><li><a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=22">#seed=22</a>：琥珀と象牙色の筋の中で、3つの暖かい玉が光を2つの炎に引き寄せ、画面の下のほうで交差させる。左の3分の2は暗いまま。いちばん暖かく静かな絵。</li><li><a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=24">#seed=24</a>：幅の広い淡い筋と、奥のやわらかい筋が交わるところで3つの玉が順に灯り、両方から炎を引き出して寄せ集める。法則がいちばん豊かに見える絵。</li><li><a href="../../experiments/carrow-lensing/opus-5-5/index.html#seed=1">#seed=1</a>：並んだ2つの玉が、薄紫がかった灰色の斜めの筋を1点に絞り、その下で光が柔らかい扇に開く。法則がいちばん素直に見える絵。</li></ul><h3>しくみ</h3><p>1本の光の筋を12の色帯×128本の光線で表し、フラグメントシェーダで光線を積分します。隣り合う光線の間を「光の管」として面で塗り、奥行き4層の浮動小数点バッファにためます。層ごとに奥ほど大きくボケをかけ、ベーリンググレア、色相を保つトーンマップ、フィルムの粒子、ディザを加えます。</p><p>シード付き乱数と固定の時間刻みを使うので、画面の大きさやフレームレートが変わっても、同じシードは同じ絵に育ちます。光の状態は0.25秒ごとに計算して間を補間し、その誤差は0.3/255未満です。露出はシードごとに、完成した絵から決めています。</p><h3>確認したこと</h3><p>24シードを1920×1080で完成まで描き、1:1の拡大（DPR 2を含む）で縞と粒子を確認しました。シード4・6・22・24は育つ過程を最初から最後まで見ています。4:3・16:10・2.37:1の画面比、URLへのシードの書き込み、クリック・スペース・溶け替わりも確認しました。</p></div></section>
+<section class="note-section" aria-labelledby="engineering-title"><h2 id="engineering-title">Engineering</h2><div class="prose"><p class="note">Zenn記事：なし</p><div class="links"><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/opus-5-5/index.html">作品のソース ↗</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/opus-5-5/LAW.md">法則の定義書 ↗</a><a href="https://github.com/akkie8/ai-creative-lab/tree/main/experiments/carrow-lensing/phase1">Phase 1 の記録 ↗</a><a href="https://github.com/akkie8/ai-creative-lab/blob/main/experiments/carrow-lensing/README.md">作品のREADME ↗</a></div></div></section>
+<section class="note-section" aria-labelledby="distribution-title"><h2 id="distribution-title">Distribution</h2><div class="prose"><p class="note">X投稿：なし</p><a href="../../experiments/carrow-lensing/opus-5-5/index.html">公開作品を開く ↗</a></div></section>
+<a class="back" href="../../index.html">← トップへ戻る</a>
+</main>
+    <footer class="site-footer"><span>AI Creative Lab / Experiments in AI, Interaction &amp; Creative Coding</span><a href="https://github.com/akkie8/ai-creative-lab">View repository ↗</a></footer>
+  </div>
+  <script src="../../assets/copy.js"></script>
+</body>
+</html>
