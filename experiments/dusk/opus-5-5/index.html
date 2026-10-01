@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dusk</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#1a1d24}
+canvas{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#note{position:fixed;left:30px;bottom:24px;margin:0;font:400 10.5px/1 "Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:.2em;color:#efe7d8;opacity:0;white-space:pre;pointer-events:none;user-select:none;-webkit-font-smoothing:antialiased}
+#note.r{left:auto;right:30px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p id="note"></p>
+<script>
+'use strict';
+// ============================================================================
+// Dusk — one sea horizon, one evening after another.
+// The sun is already down: only the afterglow, the blue hour and the stars.
+// Everything below is a function of the loop time t (seconds). #t=12.5 freezes.
+// ============================================================================
+
+const CYCLE = 30, FADE = 6;
+const FPS = 30; // played like film: a new frame, and new grain, 30 times a second whatever the display's rate
+const D = Math.PI / 180;
+
+// One place, one angle: the cliff at Cabo da Roca, looking west over the Atlantic.
+const SITE = { lat: 38.781, lon: -9.501, obs: 0.14, az: 270 };
+
+// ---------------------------------------------------------------- evenings --
+// What changes from evening to evening is the date (where the glow sits, which
+// planets are out) and the air. Aerosol numbers: mie = multiple of a clean
+// continental load, ang = Angstrom exponent, mieH = scale height km,
+// str = stratospheric sulphate per km at 21 km, oz = ozone column factor.
+// sea: rms slope of the swell and of the wind chop.
+const EVENINGS = [
+  { y: 2015, m: 3, d: 19, // rinsed air after rain; Venus and Mars coming down
+    air: { mie: 0.7, ang: 1.3, abs: 0.05, mieH: 1.2, g: 0.78, str: 0, oz: 1.1 },
+    sea: { swell: 0.02, chop: 0.013 }, tint: [1, 1, 1], sat: 1, exp: 0 },
+  { y: 2018, m: 11, d: 6, // soft, humid Atlantic air
+    air: { mie: 2.4, ang: 0.6, abs: 0.03, mieH: 0.9, g: 0.8, str: 0, oz: 0.95 },
+    sea: { swell: 0.026, chop: 0.016 }, tint: [1.04, 0.97, 1.02], sat: 0.95, exp: 0 },
+  { y: 2021, m: 7, d: 9, // summer sea haze; the horizon lets go
+    air: { mie: 6, ang: 0.35, abs: 0.02, mieH: 0.7, g: 0.82, str: 0, oz: 1 },
+    sea: { swell: 0.02, chop: 0.018 }, tint: [1.05, 0.97, 0.96], sat: 0.9, exp: 0 },
+  { y: 1991, m: 10, d: 6, // three months after Pinatubo: the purple light
+    air: { mie: 1.0, ang: 1.1, abs: 0.05, mieH: 1.2, g: 0.78, str: 0.004, oz: 1 },
+    sea: { swell: 0.022, chop: 0.013 }, tint: [1, 1, 1], sat: 1, exp: 0 },
+  { y: 2012, m: 4, d: 20, // fine Saharan dust aloft
+    air: { mie: 3.5, ang: 0.25, abs: 0.8, mieH: 2.8, g: 0.72, str: 0, oz: 1.05, dust: 1 },
+    sea: { swell: 0.022, chop: 0.018 }, tint: [1.03, 0.96, 1.01], sat: 0.9, exp: 0 },
+  { y: 2020, m: 1, d: 23, side: 'r', // a still winter evening; Venus's path runs down the left
+    air: { mie: 0.45, ang: 1.4, abs: 0.05, mieH: 1.0, g: 0.78, str: 0, oz: 1.2 },
+    sea: { swell: 0.013, chop: 0.006 }, tint: [0.96, 1.0, 1.05], sat: 1, exp: 0 },
+];
+const N = EVENINGS.length, LOOP = CYCLE * N;
+// the print each evening was made on: its black (toe) and its white (shoulder)
+// filt: the printer's filtration, stops per channel
+const PRINTS = {
+  teal:  { toe: [0.078, 0.094, 0.102], sh: [0.958, 0.938, 0.882], filt: [-0.02, 0, 0.04] },
+  rose:  { toe: [0.1, 0.082, 0.1],     sh: [0.965, 0.915, 0.9],   filt: [0.1, -0.08, 0.03] },
+  cream: { toe: [0.084, 0.088, 0.112],    sh: [0.968, 0.935, 0.87],  filt: [0.12, -0.03, -0.07] },
+  plum:  { toe: [0.098, 0.08, 0.115],  sh: [0.95, 0.915, 0.925],  filt: [0.06, -0.1, 0.08] },
+  sand:  { toe: [0.088, 0.084, 0.11],    sh: [0.962, 0.92, 0.9],    filt: [0.08, -0.08, 0.02] },
+  ice:   { toe: [0.07, 0.09, 0.112],   sh: [0.93, 0.95, 0.945],   filt: [-0.08, 0, 0.1] },
+};
+EVENINGS.forEach((E, i) => { E.print = PRINTS[['teal', 'rose', 'cream', 'plum', 'sand', 'ice'][i]]; });
+
+// --------------------------------------------------------------- astronomy --
+function julian(y, m, d, h) {
+  if (m <= 2) { y--; m += 12; }
+  const A = Math.floor(y / 100), B = 2 - A + Math.floor(A / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5 + h / 24;
+}
+function sunRaDec(jd) {
+  const n = jd - 2451545, L = 280.46 + 0.9856474 * n, g = (357.528 + 0.9856003 * n) * D;
+  const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * D, e = 23.439 * D;
+  return [Math.atan2(Math.cos(e) * Math.sin(lam), Math.cos(lam)), Math.asin(Math.sin(e) * Math.sin(lam))];
+}
+// local east / up / north of an object at hour angle H, declination dec, latitude lat
+function enu(H, dec, lat) {
+  return [-Math.cos(dec) * Math.sin(H),
+    Math.sin(dec) * Math.sin(lat) + Math.cos(dec) * Math.cos(H) * Math.cos(lat),
+    Math.sin(dec) * Math.cos(lat) - Math.cos(dec) * Math.cos(H) * Math.sin(lat)];
+}
+const altOf = (P, H) => Math.asin(enu(H, P.dec, P.phi)[1]) / D;
+const refr = h => { h = Math.max(h, -1.6); return 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * D) / 60; };
+// JPL approximate Keplerian elements (a e I L varpi Omega, then per-century rates)
+const KEP = {
+  Mercury: [0.38709927, 0.20563593, 7.00497902, 252.2503235, 77.45779628, 48.33076593, 0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081],
+  Venus: [0.72333566, 0.00677672, 3.39467605, 181.9790995, 131.60246718, 76.67984255, 0.0000039, -0.00004107, -0.0007889, 58517.81538729, 0.00268329, -0.27769418],
+  Earth: [1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0, 0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0],
+  Mars: [1.52371034, 0.0933941, 1.84969142, -4.55343205, -23.94362959, 49.55953891, 0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343],
+  Jupiter: [5.202887, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909, -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106],
+  Saturn: [9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448, -0.0012506, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794],
+};
+function helio(k, T) {
+  const q = KEP[k], a = q[0] + q[6] * T, e = q[1] + q[7] * T, I = (q[2] + q[8] * T) * D, L = (q[3] + q[9] * T) * D,
+    w = (q[4] + q[10] * T) * D, O = (q[5] + q[11] * T) * D, om = w - O;
+  let M = ((L - w) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI, E = M + e * Math.sin(M);
+  for (let i = 0; i < 8; i++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  const x = a * (Math.cos(E) - e), y = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  const co = Math.cos(om), so = Math.sin(om), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
+  return [(co * cO - so * sO * cI) * x + (-so * cO - co * sO * cI) * y, (co * sO + so * cO * cI) * x + (-so * sO + co * cO * cI) * y, so * sI * x + co * sI * y];
+}
+function planets(jd) {
+  const T = (jd - 2451545) / 36525, E = helio('Earth', T), eps = 23.43928 * D, out = [];
+  const col = { Mercury: [1, 0.93, 0.85], Venus: [1, 0.97, 0.9], Mars: [1, 0.72, 0.52], Jupiter: [1, 0.94, 0.84], Saturn: [1, 0.9, 0.72] };
+  for (const k of ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn']) {
+    const p = helio(k, T), x = p[0] - E[0], y = p[1] - E[1], z = p[2] - E[2];
+    const ye = y * Math.cos(eps) - z * Math.sin(eps), ze = y * Math.sin(eps) + z * Math.cos(eps);
+    const r = Math.hypot(...p), dl = Math.hypot(x, y, z), R = Math.hypot(...E);
+    const i = Math.acos(Math.max(-1, Math.min(1, (r * r + dl * dl - R * R) / (2 * r * dl)))) / D;
+    const base = { Mercury: -0.42 + 0.038 * i - 0.000273 * i * i + 2e-6 * i * i * i, Venus: -4.4 + 0.0009 * i + 0.000239 * i * i - 6.5e-7 * i * i * i, Mars: -1.52 + 0.016 * i, Jupiter: -9.4 + 0.005 * i, Saturn: -8.88 }[k];
+    out.push([Math.atan2(ye, x), Math.atan2(ze, Math.hypot(x, ye)), base + 5 * Math.log10(r * dl), ...col[k]]);
+  }
+  return out;
+}
+// bright stars (J2000): RA h, Dec deg, V mag, B-V
+const STARS = `6.752 -16.716 -1.46 0;6.399 -52.696 -.74 .15;14.261 19.182 -.05 1.23;14.66 -60.834 -.27 .71;18.616 38.784 .03 0;5.278 45.998 .08 .8;5.242 -8.202 .13 -.03;7.655 5.225 .34 .42;1.629 -57.237 .46 -.16;5.919 7.407 .5 1.85;14.064 -60.373 .61 -.23;19.846 8.868 .76 .22;12.443 -63.099 .76 -.24;4.599 16.509 .86 1.54;16.49 -26.432 .96 1.83;13.42 -11.161 .97 -.23;7.755 28.026 1.14 1;22.961 -29.622 1.16 .09;20.69 45.28 1.25 .09;12.795 -59.689 1.25 -.23;10.14 11.967 1.4 -.11;6.977 -28.972 1.5 -.21;7.577 31.888 1.58 .03;17.56 -37.104 1.62 -.22;12.519 -57.113 1.63 1.6;5.419 6.35 1.64 -.22;5.438 28.608 1.65 -.13;9.22 -69.717 1.67 .07;5.604 -1.202 1.69 -.18;22.137 -46.961 1.73 -.13;5.679 -1.943 1.74 -.21;12.9 55.96 1.76 -.02;11.062 61.751 1.79 1.07;3.405 49.861 1.79 .48;7.14 -26.393 1.83 .68;8.159 -47.337 1.83 -.22;17.622 -42.998 1.86 .4;18.403 -34.385 1.79 -.03;8.375 -59.51 1.86 1.28;13.792 49.313 1.85 -.19;5.992 44.948 1.9 .08;16.811 -69.028 1.91 1.45;6.629 16.399 1.93 0;20.427 -56.735 1.94 -.2;8.745 -54.709 1.96 .04;6.378 -17.956 1.98 -.23;9.46 -8.659 1.98 1.44;2.53 89.264 1.98 .6;2.12 23.462 2 1.15;10.333 19.842 2.01 1.13;.727 -17.987 2.04 1.02;18.921 -26.297 2.05 -.13;14.111 -36.37 2.06 1.01;1.162 35.621 2.05 1.58;.14 29.09 2.06 -.11;17.582 12.56 2.07 .15;14.845 74.156 2.08 1.47;5.796 -9.67 2.07 -.17;11.818 14.572 2.14 .09;3.136 40.956 2.12 -.05;22.711 -46.885 2.07 1.6;12.692 -48.96 2.2 -.01;9.285 -59.275 2.21 .18;9.133 -43.433 2.21 1.66;15.578 26.715 2.23 -.02;5.533 -.299 2.23 -.22;20.37 40.257 2.23 .67;17.943 51.489 2.23 1.52;.675 56.537 2.24 1.17;8.06 -40.003 2.25 -.27;2.065 42.33 2.26 1.37;.153 59.15 2.27 .34;14.75 27.074 2.37 .97;16.006 -22.622 2.29 -.12;16.836 -34.293 2.29 1.15;11.031 56.382 2.37 -.02;.438 -42.306 2.4 1.09;17.708 -39.03 2.39 -.17;21.736 9.875 2.39 1.52;23.063 28.083 2.42 1.67;17.173 -15.725 2.43 .06;11.897 53.695 2.44 0;7.402 -29.303 2.45 -.08;9.368 -55.011 2.47 -.14;.945 60.717 2.47 -.15;23.079 15.205 2.49 -.04;20.77 33.97 2.48 1.03;16.091 -19.806 2.62 -.07;11.235 20.524 2.56 .12;5.546 -17.822 2.58 .21;12.263 -17.542 2.59 -.11;15.283 -9.383 2.61 -.07;15.738 6.426 2.63 1.17;1.911 20.808 2.64 .13;5.661 -34.074 2.65 -.12;12.573 -23.397 2.65 .89;13.911 18.398 2.68 .58;17.513 -37.296 2.7 -.22;18.35 -29.828 2.7 1.38;19.771 10.613 2.72 1.51;3.038 4.09 2.54 1.64;14.848 -16.042 2.75 .15;17.244 14.39 2.78 1.16;16.504 21.49 2.78 .95;13.036 10.959 2.83 .94;19.512 27.96 3.05 1.13;3.791 24.105 2.87 -.09;21.784 -16.127 2.85 .29;13.399 54.925 2.23 .02;12.257 57.033 3.31 .08;21.31 62.586 2.45 .26;1.43 60.235 2.68 .13;.221 15.184 2.83 -.23;22.096 -.32 2.95 .97;21.526 -5.571 2.9 .83;20.35 -14.781 3.05 .79;18.466 -25.422 2.81 1.04;19.044 -29.88 2.6 .08;18.097 -30.424 2.99 1;5.59 -5.91 2.77 -.24;3.902 31.884 2.85 .12;3.819 24.053 3.62 -.07;3.748 24.113 3.7 -.11;3.764 24.368 3.87 -.07;4.477 19.18 3.53 1.01;4.478 15.871 3.4 .18;16.353 -25.593 2.89 .13;16.598 -28.216 2.82 -.25;16.619 -10.567 2.56 .02;16.239 -3.694 2.74 1.58;9.764 23.774 2.98 .81;6.383 22.514 2.87 1.64;6.732 25.131 2.98 1.4;7.453 8.289 2.89 -.09;6.338 -30.063 3.02 -.19;5.471 -20.759 2.84 .82;2.971 -40.305 3.2 .14;5.131 -5.086 2.79 .13;12.498 -16.515 2.95 -.05;19.09 13.863 2.99 .01;19.75 45.131 2.87 -.03;18.982 32.69 3.25 -.05;22.308 -60.26 2.86 1.39;.429 -77.254 2.8 .62;1.98 -61.57 2.86 .28;12.252 -58.749 2.79 -.23;15.919 -63.431 2.83 .29;15.315 -68.679 2.89 0;13.665 -53.466 2.3 -.22;14.592 -42.158 2.31 -.19;13.926 -47.288 2.55 -.18;12.139 -50.722 2.6 -.12;17.793 -40.127 3.03 .51;17.203 -43.239 3.32 .41;16.864 -38.047 3.08 -.2;10.716 -64.394 2.76 -.22;9.785 -65.072 3.01 .27;7.286 -37.097 2.7 1.62;8.126 -24.304 2.81 .43;14.699 -47.388 2.3 -.15;14.976 -43.134 2.68 -.18;17.531 -49.876 2.84 -.17;17.422 -55.53 2.85 1.46;1.907 63.67 3.37 -.15;3.964 40.01 2.89 -.18;5.995 37.213 2.62 -.08;4.95 33.166 2.69 1.53;14.535 38.308 3.03 .19;17.507 52.301 2.79 .98;16.4 61.514 2.73 .91;15.345 71.834 3 .05;17.725 4.567 2.76 1.16;16.688 31.603 2.81 .65;12.694 -1.449 2.74 .36;13.315 -23.171 3 .92;18.761 -26.991 3.17 -.11;19.116 -27.671 3.32 1.19;19.163 -21.024 2.88 .35;5.585 9.934 3.39 -.16;5.627 21.143 3 -.19;7.335 21.982 3.53 .34`
+  .split(';').map(s => s.trim().split(/\s+/).map(Number));
+function bvRGB(bv) { // B-V -> linear rgb, normalised to luminance 1 (approximate blackbody)
+  const T = 4600 * (1 / (0.92 * bv + 1.7) + 1 / (0.92 * bv + 0.62)), x = T / 1000;
+  const r = x < 6.6 ? 1 : Math.pow(x / 6.6, -0.55), g = x < 6.6 ? Math.pow(x / 6.6, 0.55) * 0.98 : Math.pow(x / 6.6, -0.28), b = x < 6.6 ? Math.pow(Math.max(x - 1.9, 0.1) / 4.7, 1.25) : 1;
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b; return [r / l, g / l, b / l];
+}
+// equatorial <-> galactic (J2000)
+const GAL = [[-0.0548755604, -0.8734370902, -0.4838350155], [0.4941094279, -0.44482963, 0.7469822445], [-0.867666149, -0.1980763734, 0.4559837762]];
+function starData(pl) {
+  const out = [];
+  for (const s of STARS) out.push([s[0] * 15 * D, s[1] * D, s[2], ...bvRGB(s[3])]);
+  for (const p of pl) out.push(p);
+  const bright = out.length;
+  let a = 0x9e3779b9; const rnd = () => { a |= 0; a = a + 0x6d2b79f5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  for (let i = 0; i < 7000;) { // the faint sky: statistical, crowding toward the Milky Way
+    const l = rnd() * 2 * Math.PI, b = Math.asin(2 * rnd() - 1);
+    if (rnd() * 9.6 > (1 + 5 * Math.exp(-Math.abs(b) / (9 * D))) * (1 + 0.6 * Math.max(0, Math.cos(l)))) continue;
+    const g = [Math.cos(b) * Math.cos(l), Math.cos(b) * Math.sin(l), Math.sin(b)];
+    const e = [0, 1, 2].map(j => GAL[0][j] * g[0] + GAL[1][j] * g[1] + GAL[2][j] * g[2]);
+    const m = 2 * Math.log10(Math.pow(10, 1.6) + rnd() * (Math.pow(10, 3.25) - Math.pow(10, 1.6)));
+    out.push([Math.atan2(e[1], e[0]), Math.asin(e[2]), m, ...bvRGB(-0.1 + rnd() * 1.5)]);
+    i++;
+  }
+  return { data: new Float32Array(out.flat()), bright };
+}
+
+// ------------------------------------------------------------ per evening --
+const PHI = SITE.lat * D, CAM = SITE.az * D;
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dm = a => { a = Math.abs(a); const d = Math.floor(a + 1e-9), m = Math.round((a - d) * 60); return d + '°' + String(m).padStart(2, '0') + '′'; };
+for (const E of EVENINGS) {
+  E.phi = PHI;
+  const jd = julian(E.y, E.m, E.d, 19 - SITE.lon / 15);
+  [E.ra, E.dec] = sunRaDec(jd);
+  E.planets = planets(jd);
+  let lo = 0, hi = Math.PI;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2, h = altOf(E, m); (h + refr(h) > 0 ? lo = m : hi = m); }
+  E.Hs = lo;
+  // time-lapse of the sun's depression: slow through the afterglow, quicker into the night
+  E.h0 = -2.0; E.b = 0.2;
+  const hEnd = -24, s1 = CYCLE + FADE;
+  E.c = (E.h0 - hEnd - E.b * s1) / (s1 * s1);
+  const st = starData(E.planets); E.stars = st.data; E.nBright = st.bright;
+  E.note = `${dm(SITE.lat)} ${SITE.lat < 0 ? 'S' : 'N'}    ${dm(SITE.lon)} ${SITE.lon < 0 ? 'W' : 'E'}    ${E.d} ${MON[E.m - 1]} ${E.y}`;
+}
+const sunAlt = (E, u) => E.h0 - E.b * u - E.c * u * u;
+function hourAngle(E, u) {
+  const h = sunAlt(E, u); let lo = E.Hs - 0.3, hi = Math.PI;
+  for (let i = 0; i < 44; i++) { const m = (lo + hi) / 2; (altOf(E, m) > h ? lo = m : hi = m); }
+  return lo;
+}
+function sunState(E, u) {
+  const H = hourAngle(E, u), v = enu(H, E.dec, E.phi);
+  return { H, dir: v, el: Math.asin(v[1]) / D, lst: E.ra + H };
+}
+
+// ------------------------------------------------------------------- GL ----
+const cv = document.getElementById('c'), note = document.getElementById('note');
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
+if (!gl || !gl.getExtension('EXT_color_buffer_float')) { document.body.style.background = '#1d2230'; throw new Error('WebGL2 float targets unavailable'); }
+
+const HEAD = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+#define PI 3.14159265359
+const float RG = 6360.0, RT = 6460.0;
+`;
+const VS = HEAD + `out vec2 vUv; void main(){ vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); vUv = p; gl_Position = vec4(p*2.-1., 0., 1.); }`;
+
+// shared atmosphere code ------------------------------------------------------
+const ATM = `
+uniform sampler2D uTrans, uMS, uNoise;
+uniform vec4 uRay, uMie, uMieX, uStr, uStrX; uniform vec3 uOzone;
+float raySph(vec3 o, vec3 d, float R){ float b = dot(o,d), c = dot(o,o) - R*R, h = b*b - c; return h < 0. ? -1. : -b + sqrt(h); }
+float rayGnd(vec3 o, vec3 d, float R){ float b = dot(o,d), c = dot(o,o) - R*R, h = b*b - c; if (h < 0. || b > 0.) return -1.; float t = -b - sqrt(h); return t > 0. ? t : -1.; }
+void medium(float h, out vec3 sR, out vec3 sM, out vec3 sS, out vec3 ext){
+  h = max(h, 0.);
+  float dR = exp(-h/uRay.w), dM = exp(-h/uMie.w), dO = max(0., 1. - abs(h - 25.)/15.);
+  float q = (h - uStr.w)/uStrX.w, dS = exp(-.5*q*q);
+  sR = uRay.rgb*dR; sM = uMie.rgb*dM; sS = uStr.rgb*dS;
+  ext = sR + sM + uMieX.rgb*dM + uOzone*dO + sS + uStrX.rgb*dS;
+}
+vec2 transUV(float r, float mu){
+  float H = sqrt(RT*RT - RG*RG), rho = sqrt(max(r*r - RG*RG, 0.));
+  float d = max(0., -r*mu + sqrt(max(r*r*(mu*mu - 1.) + RT*RT, 0.)));
+  float dmin = RT - r, dmax = rho + H;
+  return vec2((d - dmin)/(dmax - dmin), rho/H)*vec2(255./256., 63./64.) + vec2(.5/256., .5/64.);
+}
+vec3 transTop(float r, float mu){ return exp(-texture(uTrans, transUV(r, mu)).rgb); }
+vec3 sunTrans(float r, float mu){ // sunlight reaching radius r, with a soft terminator
+  float muH = -sqrt(max(1. - RG*RG/(r*r), 0.));
+  float v = smoothstep(-.0045, .0045, mu - muH);
+  return v > 0. ? transTop(r, max(mu, muH)) * v : vec3(0);
+}
+float litX(vec3 p, vec3 sun){ float r = length(p); return dot(p, sun)/r + sqrt(max(1. - RG*RG/(r*r), 0.)); }
+vec3 sunLit(float r, float mu){ float muH = -sqrt(max(1. - RG*RG/(r*r), 0.)); return transTop(r, max(mu, muH + .0005)); }
+vec3 msLight(float h, float mu){ return texture(uMS, (vec2(mu*.5 + .5, clamp(h/100., 0., 1.))*vec2(127., 31.) + .5)/vec2(128., 32.)).rgb; }
+float phR(float c){ return 3./(16.*PI)*(1. + c*c); }
+float phM(float g, float c){ float g2 = g*g; return 3./(8.*PI)*(1. - g2)*(1. + c*c)/((2. + g2)*pow(1. + g2 - 2.*g*c, 1.5)); }
+float phHG(float g, float c){ float g2 = g*g; return (1. - g2)/(4.*PI*pow(1. + g2 - 2.*g*c, 1.5)); }
+`;
+// the sky table: azimuth across the view, elevation packed densely at the horizon
+const LUTMAP = `
+uniform vec4 uMap; uniform vec2 uLut; // uMap: half width (rad), lowest el, horizon el, highest el
+const float V0 = .3;
+float lutEl(float v){ return v < V0 ? uMap.z - (uMap.z - uMap.y)*pow((V0 - v)/V0, 2.) : uMap.z + (uMap.w - uMap.z)*pow((v - V0)/(1. - V0), 2.); }
+float lutV(float el){ return el < uMap.z ? V0 - V0*sqrt(clamp((uMap.z - el)/(uMap.z - uMap.y), 0., 1.)) : V0 + (1. - V0)*sqrt(clamp((el - uMap.z)/(uMap.w - uMap.z), 0., 1.)); }
+vec2 lutTC(float azo, float el){ vec2 uv = vec2(clamp(azo/uMap.x*.5 + .5, 0., 1.), lutV(el)); return (uv*(uLut - 1.) + .5)/uLut; }
+`;
+
+function sh(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s), lines = src.split('\n');
+    const m = /0:(\d+)/.exec(log || ''); const ln = m ? +m[1] : 0;
+    throw new Error(log + '\n' + lines.slice(Math.max(0, ln - 4), ln + 2).map((l, i) => (ln - 3 + i) + ': ' + l).join('\n'));
+  }
+  return s;
+}
+function program(fs, vs = VS) {
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i), name = a.name.replace(/\[0\]$/, ''); u[name] = { loc: gl.getUniformLocation(p, a.name), type: a.type }; }
+  let unit = 0; const units = {};
+  for (const k in u) if (u[k].type === gl.SAMPLER_2D) { units[k] = unit++; }
+  return { p, u, units };
+}
+function use(pr, vals) {
+  gl.useProgram(pr.p);
+  for (const k in vals) {
+    const e = pr.u[k]; if (!e) continue; const v = vals[k];
+    switch (e.type) {
+      case gl.FLOAT: gl.uniform1f(e.loc, v); break;
+      case gl.INT: gl.uniform1i(e.loc, v); break;
+      case gl.FLOAT_VEC2: gl.uniform2fv(e.loc, v); break;
+      case gl.FLOAT_VEC3: gl.uniform3fv(e.loc, v); break;
+      case gl.FLOAT_VEC4: gl.uniform4fv(e.loc, v); break;
+      case gl.SAMPLER_2D: gl.activeTexture(gl.TEXTURE0 + pr.units[k]); gl.bindTexture(gl.TEXTURE_2D, v); gl.uniform1i(e.loc, pr.units[k]); break;
+    }
+  }
+}
+function texture(w, h, { fmt = gl.RGBA16F, filter = gl.LINEAR, wrap = gl.CLAMP_TO_EDGE } = {}) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return { t, f, w, h };
+}
+function target(T) { gl.bindFramebuffer(gl.FRAMEBUFFER, T ? T.f : null); gl.viewport(0, 0, T ? T.w : cv.width, T ? T.h : cv.height); }
+const vao = gl.createVertexArray();
+function quad() { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+
+// ------------------------------------------------------------- shaders ----
+const NOISE_FN = `
+uint hsh(uvec3 v){ v = v*1664525u + 1013904223u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; v ^= v >> 16u; v.x += v.y*v.z; return v.x; }
+vec2 grad(ivec2 c, int s){ c = (c % 32 + 32) % 32; float a = float(hsh(uvec3(uvec2(c), uint(s))) & 65535u)/65536.*6.2831853; return vec2(cos(a), sin(a)); }
+vec3 gnd(vec2 p, int s){ // periodic gradient noise with its derivative
+  vec2 i = floor(p), f = p - i; ivec2 c = ivec2(i);
+  vec2 u = f*f*f*(f*(f*6. - 15.) + 10.), du = 30.*f*f*(f*(f - 2.) + 1.);
+  vec2 ga = grad(c, s), gb = grad(c + ivec2(1,0), s), gc = grad(c + ivec2(0,1), s), gd = grad(c + ivec2(1,1), s);
+  float va = dot(ga, f), vb = dot(gb, f - vec2(1,0)), vc = dot(gc, f - vec2(0,1)), vd = dot(gd, f - vec2(1,1));
+  float k = va - vb - vc + vd;
+  float v = va + u.x*(vb - va) + u.y*(vc - va) + u.x*u.y*k;
+  vec2 d = ga + u.x*(gb - ga) + u.y*(gc - ga) + u.x*u.y*(ga - gb - gc + gd) + du*(u.yx*k + vec2(vb, vc) - va);
+  return vec3(v, d);
+}`;
+const FS_NOISE = HEAD + NOISE_FN + `
+out vec4 o; uniform int uKind;
+void main(){ vec2 p = gl_FragCoord.xy/8.;
+  o = uKind == 0 ? vec4(gnd(p, 1).x, gnd(p, 2).x, gnd(p, 3).x, gnd(p, 4).x) : vec4(gnd(p, 5), 0); }`;
+
+const FS_TRANS = HEAD + ATM + `
+out vec4 o;
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5)/vec2(255., 63.);
+  float H = sqrt(RT*RT - RG*RG), rho = H*uv.y, r = sqrt(rho*rho + RG*RG);
+  float dmin = RT - r, dmax = rho + H, d = dmin + uv.x*(dmax - dmin);
+  float mu = d == 0. ? 1. : clamp((H*H - rho*rho - d*d)/(2.*r*d), -1., 1.);
+  vec3 od = vec3(0); const int S = 96; float dt = d/float(S);
+  for (int i = 0; i < S; i++){ float t = (float(i) + .5)*dt, h = sqrt(r*r + t*t + 2.*r*mu*t) - RG; vec3 a, b, c, e; medium(h, a, b, c, e); od += e*dt; }
+  o = vec4(od, 1);
+}`;
+
+const FS_MS = HEAD + ATM + `
+out vec4 o; uniform float uAlbedo;
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5)/vec2(127., 31.);
+  float mus = uv.x*2. - 1., h = max(uv.y*100., .02), r = RG + h;
+  vec3 ro = vec3(0, r, 0), sun = vec3(sqrt(max(0., 1. - mus*mus)), mus, 0);
+  vec3 L2 = vec3(0), F = vec3(0);
+  for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++){
+    float ct = 1. - 2.*(float(i) + .5)/8., st = sqrt(1. - ct*ct), ph = 2.*PI*(float(j) + .5)/8.;
+    vec3 rd = vec3(st*cos(ph), ct, st*sin(ph));
+    float tg = rayGnd(ro, rd, RG), tm = tg > 0. ? tg : raySph(ro, rd, RT);
+    vec3 T = vec3(1), Ls = vec3(0), f = vec3(0); const int S = 24; float dt = tm/float(S);
+    for (int k = 0; k < S; k++){
+      vec3 p = ro + rd*(float(k) + .5)*dt; float rr = length(p);
+      vec3 sR, sM, sS, e; medium(rr - RG, sR, sM, sS, e);
+      vec3 sc = sR + sM + sS, St = exp(-e*dt);
+      Ls += T*(sc*sunTrans(rr, dot(p, sun)/rr)/(4.*PI))*(1. - St)/e;
+      f += T*sc*(1. - St)/e; T *= St;
+    }
+    if (tg > 0.){ vec3 p = ro + rd*tg; float m = dot(normalize(p), sun); Ls += T*sunTrans(RG, m)*max(m, 0.)*uAlbedo/PI; }
+    L2 += Ls/64.; F += f/64.;
+  }
+  o = vec4(L2/(1. - F), 1);
+}`;
+
+// sky: radiance along every ray of the view (to the sea for rays below the horizon), pre-exposed
+const FS_SKY = HEAD + ATM + LUTMAP + `
+out vec4 o;
+uniform vec3 uSun; uniform float uCam, uObsR, uExpo, uG, uStrG, uMeter, uTop; uniform int uSteps;
+void main(){
+  vec2 uv = (vec2(uMeter > .5 ? mod(gl_FragCoord.x, uLut.x) : gl_FragCoord.x, gl_FragCoord.y) - .5)/(uLut - 1.);
+  float az = uCam + (uv.x*2. - 1.)*uMap.x, el = uMeter > .5 ? uv.y*uTop : lutEl(uv.y);
+  vec3 rd = vec3(sin(az)*cos(el), sin(el), cos(az)*cos(el)), ro = vec3(0, uObsR, 0);
+  float tg = rayGnd(ro, rd, RG), tm = tg > 0. ? tg : raySph(ro, rd, RT); tm = min(tm, 1400.);
+  float c = dot(rd, uSun), pR = phR(c), pM = .9*phM(uG, c) + .1*phHG(-.35, c), pS = phM(uStrG, c);
+  vec3 L = vec3(0), T = vec3(1); float tp = 0.; int S = uSteps; float xa = litX(ro, uSun);
+  for (int i = 0; i < 96; i++){
+    if (i >= S) break;
+    float x = (float(i) + 1.)/float(S), tn = tm*x*x, dt = tn - tp, t = tp + dt*.5; tp = tn;
+    vec3 p = ro + rd*t; float r = length(p), mu = dot(p, uSun)/r;
+    float xb = litX(ro + rd*tn, uSun), lit = clamp(.5 + .5*(xa + xb)/max(abs(xa - xb), .04), 0., 1.); xa = xb;
+    vec3 sR, sM, sS, e; medium(r - RG, sR, sM, sS, e);
+    vec3 Sc = (sR*pR + sM*pM + sS*pS)*sunLit(r, mu)*lit + (sR + sM + sS)*msLight(r - RG, mu);
+    vec3 St = exp(-e*dt);
+    L += T*Sc*(1. - St)/e; T *= St;
+  }
+  o = vec4(L*uExpo, 1);
+}`;
+
+// the same table blurred in elevation, six widths stacked: what a rippled sea reflects
+const FS_BLUR = HEAD + LUTMAP + `
+out vec4 o; uniform sampler2D uSky; uniform float uSig, uRow;
+void main(){
+  vec2 uv = (gl_FragCoord.xy - vec2(0, uRow) - .5)/(uLut - 1.);
+  float azo = (uv.x*2. - 1.)*uMap.x, el = max(lutEl(uv.y), 0.);
+  vec3 s = vec3(0); float w = 0.;
+  for (int k = -6; k <= 6; k++){
+    float z = float(k)*.5, wk = exp(-.5*z*z);
+    s += wk*texture(uSky, lutTC(azo, clamp(el + uSig*z, .0005, uMap.w))).rgb; w += wk;
+  }
+  o = vec4(s/w, 1);
+}`;
+
+// stars and planets as soft points
+const STAR_DIR = `
+in vec3 aPos; in vec3 aCol;
+uniform vec3 uCamF; uniform vec2 uRes; uniform float uCam, uLst, uLat, uExpo, uGain, uU;
+vec3 starDir(){
+  float H = uLst - aPos.x, dc = aPos.y;
+  return vec3(-cos(dc)*sin(H), sin(dc)*sin(uLat) + cos(dc)*cos(H)*cos(uLat), sin(dc)*cos(uLat) - cos(dc)*cos(H)*sin(uLat));
+}
+float twinkle(float el, float id){ return 1. + .22*sin(uU*(9. + mod(id, 7.)) + id)*smoothstep(.5, .05, el); }
+`;
+const VS_STAR = HEAD + STAR_DIR + `
+out vec3 vCol; out float vSig;
+void main(){
+  vec3 v = starDir(), F = vec3(sin(uCam), 0., cos(uCam)), R = vec3(cos(uCam), 0., -sin(uCam));
+  float z = dot(v, F), x = dot(v, R), el = asin(clamp(v.y, -1., 1.));
+  vec2 px = uCamF.xy + uCamF.z*vec2(x, v.y)/max(z, 1e-3);
+  float f = pow(10., -.4*aPos.z)*2.04e-11*uGain;               // flux, sun = 1
+  float om = z*z*z/(uCamF.z*uCamF.z);                            // solid angle of one pixel
+  vSig = .8 + .35*clamp(1.5 - aPos.z, 0., 4.);
+  vCol = aCol*f*twinkle(el, float(gl_VertexID))/(om*6.2831853*vSig*vSig)*uExpo;
+  gl_PointSize = ceil(vSig*6.);
+  gl_Position = vec4(px/uRes*2. - 1., 0., 1.);
+  if (z < .05 || el < -.02) gl_Position = vec4(9., 9., 0., 1.);
+}`;
+const FS_STAR = HEAD + `in vec3 vCol; in float vSig; out vec4 o;
+void main(){ vec2 d = (gl_PointCoord - .5)*ceil(vSig*6.); o = vec4(vCol*exp(-.5*dot(d, d)/(vSig*vSig)), 1); }`;
+
+// their reflections: long soft columns on the far sea, one quad per bright star
+const VS_STARR = HEAD + ATM + STAR_DIR + `
+out vec3 vCol; out vec2 vD; uniform float uObsR, uSu;
+void main(){
+  vec3 v = starDir(), F = vec3(sin(uCam), 0., cos(uCam)), R = vec3(cos(uCam), 0., -sin(uCam));
+  float z = dot(v, F), x = dot(v, R), el = asin(clamp(v.y, -1., 1.));
+  float xx = el/uSu, w = inversesqrt(1. + 1.6*xx*xx), md = 1.2533*uSu*w, sd = uSu*(1. - .345*w);
+  float g = max(el - 2.*md, .002), ca = z/sqrt(max(1. - v.y*v.y, 1e-6));
+  vec2 c = vec2(uCamF.x + uCamF.z*x/max(z, 1e-3), uCamF.y - uCamF.z*tan(g)/max(ca, 1e-3));
+  vec2 sg = vec2(max(3., 1.4*uSu*sin(g)*uCamF.z), clamp(2.*sd*uCamF.z, 3., uRes.y*.3));
+  vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1))*2. - 1.;
+  vD = corner*3.;
+  float Fr = .02 + .98*pow(1. - sin(g + md), 5.);
+  float f = pow(10., -.4*aPos.z)*2.04e-11*uGain*Fr;
+  float om = pow(ca*cos(g), 3.)/(uCamF.z*uCamF.z);
+  vCol = aCol*f*transTop(uObsR, max(v.y, .002))*twinkle(el, float(gl_InstanceID))/(om*6.2831853*sg.x*sg.y)*uExpo;
+  gl_Position = vec4((c + vD*sg)/uRes*2. - 1., 0., 1.);
+  if (z < .05 || el < .004) gl_Position = vec4(9., 9., 0., 1.);
+}`;
+const FS_STARR = HEAD + `in vec3 vCol; in vec2 vD; out vec4 o;
+void main(){ o = vec4(vCol*exp(-.5*dot(vD, vD)), 1); }`;
+
+// the scene: sky, stars, the Milky Way, the sea — pre-exposed linear light
+const FS_SCENE = HEAD + ATM + LUTMAP + `
+out vec4 o;
+uniform sampler2D uSky, uRB, uStars, uStarR, uWave;
+uniform vec2 uRes; uniform vec3 uCamF;
+uniform float uCam, uObsR, uObsH, uU, uLst, uLat, uGainN, uSat, uGrad;
+uniform vec4 uSea; uniform vec3 uBody, uTint;
+vec4 cubic(float v){ vec4 n = vec4(1, 2, 3, 4) - v, s = n*n*n; float x = s.x, y = s.y - 4.*s.x, z = s.z - 4.*s.y + 6.*s.x; return vec4(x, y, z, 6. - x - y - z)/6.; }
+vec3 bicubic(sampler2D t, vec2 uv){
+  vec2 sz = vec2(textureSize(t, 0)); uv = uv*sz - .5; vec2 f = fract(uv); uv -= f;
+  vec4 xc = cubic(f.x), yc = cubic(f.y), c = uv.xxyy + vec2(-.5, 1.5).xyxy, s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
+  vec4 of = (c + vec4(xc.yw, yc.yw)/s)/sz.xxyy;
+  vec3 a = texture(t, of.xz).rgb, b = texture(t, of.yz).rgb, d = texture(t, of.xw).rgb, e = texture(t, of.yw).rgb;
+  float sx = s.x/(s.x + s.y), sy = s.z/(s.z + s.w);
+  return mix(mix(e, d, sx), mix(b, a, sx), sy);
+}
+vec3 sky(float azo, float el){ return bicubic(uSky, lutTC(azo, el)); }
+vec3 skyLev(float l, float azo, float el){
+  if (l < .5) return sky(azo, el);
+  vec2 tc = lutTC(azo, el); tc.y = clamp(tc.y, .5/uLut.y, 1. - .5/uLut.y);
+  return texture(uRB, vec2(tc.x, (tc.y + l - 1.)/6.)).rgb;
+}
+const float RB0 = .0061; // narrowest blur, radians
+vec3 skyBlur(float azo, float el, float s){
+  float lev = clamp(s < RB0 ? s/RB0 : 1. + log2(s/RB0), 0., 6.), l0 = floor(lev);
+  return mix(skyLev(l0, azo, el), skyLev(min(l0 + 1., 6.), azo, el), lev - l0);
+}
+// a soft graduated filter, cut to the sky: held back where the sky is bright, opened where it is dark
+float grad(float azo, float el){
+  float s = 0.;
+  for (int k = -2; k <= 2; k++) s += dot(skyLev(3., clamp(azo + float(k)*.1, -uMap.x, uMap.x), el), vec3(.2126, .7152, .0722));
+  float x = -uGrad*log(max(s/5., 1e-7)/.2);
+  return exp(x > 0. ? .79*tanh(x/.79) : 1.2*tanh(x/1.2)); // soft limits (x2.2, x0.3): a hard clamp draws its contour as a Mach band
+}
+// the Milky Way and the airglow, in the same units as the stars
+vec3 night(vec3 d){
+  float sl = sin(uLat), cl = cos(uLat), sd = clamp(sl*d.y + cl*d.z, -1., 1.), cd = sqrt(1. - sd*sd);
+  float H = atan(-d.x, cl*d.y - sl*d.z), ra = uLst - H;
+  vec3 e = vec3(cd*cos(ra), cd*sin(ra), sd);
+  vec3 g = vec3(dot(vec3(-.0548755604, -.8734370902, -.4838350155), e), dot(vec3(.4941094279, -.44482963, .7469822445), e), dot(vec3(-.867666149, -.1980763734, .4559837762), e));
+  float bd = degrees(asin(clamp(g.z, -1., 1.))), ld = degrees(atan(g.y, g.x));
+  float core = exp(-ld*ld/3000.), wid = 5. + 6.*core;
+  float n1 = texture(uNoise, (g.xy*5. + g.z*vec2(3.1, -1.7))/32.).a, n2 = texture(uNoise, (g.xy*13. + g.z*vec2(-2.3, 4.1))/32. + .37).b;
+  float disc = exp(-bd*bd/(wid*wid))*(.3 + .7*core)*(1. + .9*n1 + .5*n2) + .3*exp(-(ld*ld + 2.2*bd*bd)/400.);
+  float dust = exp(-pow((bd - .9)/2.3, 2.))*smoothstep(85., 25., abs(ld))*smoothstep(-.35, .25, n2 + .4*n1);
+  float mw = max(disc*(1. - .7*dust), 0.)*6e-9;
+  float ag = 1.9e-9/sqrt(max(1. - .96*(1. - d.y*d.y), .04));    // van Rhijn brightening toward the horizon
+  return (vec3(1., .93, .82)*mw + vec3(.8, .95, 1.08)*ag)*uGainN;
+}
+void main(){
+  vec2 px = gl_FragCoord.xy;
+  float dx = (px.x - uCamF.x)/uCamF.z, dy = (px.y - uCamF.y)/uCamF.z;
+  float azo = atan(dx), el = atan(dy/sqrt(1. + dx*dx)), az = uCam + azo;
+  float pix = 1./(uCamF.z*(1. + dx*dx + dy*dy));
+  vec3 ro = vec3(0, uObsR, 0);
+  float dip = -acos(RG/uObsR);
+  float cov = smoothstep(.7*pix, -.7*pix, el - dip);
+  vec3 col = vec3(0);
+  if (cov < 1.){ // sky
+    float e = max(el, dip + .0002);
+    vec3 d = vec3(sin(az)*cos(e), sin(e), cos(az)*cos(e));
+    col += (1. - cov)*(sky(azo, e) + (texture(uStars, px/uRes).rgb + night(d))*transTop(uObsR, d.y));
+  }
+  if (cov > 0.){ // sea
+    float e = min(el, dip - .0002);
+    vec3 d = vec3(sin(az)*cos(e), sin(e), cos(az)*cos(e));
+    float t = max(rayGnd(ro, d, RG), 0.);
+    vec3 p = ro + d*t, up = normalize(p);
+    float sg = max(-dot(d, up), 1e-4);
+    vec2 q = p.xz*1000.;                                  // metres, east / north
+    float fpa = max(t*1000.*pix/sg, .01);                 // pixel footprint along the view
+    vec3 gr = vec3(0); float vu = uSea.z*uSea.z;
+    for (int i = 0; i < 6; i++){
+      float fi = float(i), lam = 80.*pow(.46, fi);
+      float a = uSea.w + (i == 0 ? 0. : sin(fi*2.4)*.45);
+      vec2 k = vec2(cos(a), sin(a)), kp = vec2(-k.y, k.x);
+      float st = i < 2 ? 3.5 : 1.8, c = sqrt(9.81*lam/6.2832);
+      vec2 P = vec2(dot(q, kp)/(lam*st), (dot(q, k) - c*uU)/lam) + fi*vec2(7.3, 3.1);
+      vec3 n = texture(uWave, P/32.).xyz;
+      float amp = i < 2 ? uSea.x : uSea.y, res = smoothstep(2.5, 5., lam/fpa);
+      vec2 gw = amp*(n.y/st*kp + n.z*k)*(i < 2 ? 1.2 : .8);
+      gr += res*vec3(gw.x, 0, gw.y);
+      vu += (1. - res*res)*amp*amp;
+    }
+    vec3 nn = normalize(up - gr), r = reflect(d, nn);
+    float gf = asin(clamp(-dot(d, nn), .0005, 1.)), su = sqrt(vu);
+    float xx = gf/su, w = inversesqrt(1. + 1.6*xx*xx), md = 1.2533*su*w, sd = su*(1. - .345*w);
+    float er = max(asin(clamp(r.y, -1., 1.)) + 2.*md, .0005), azr = atan(r.x, r.z) - uCam;
+    azr = mod(azr + PI, 2.*PI) - PI;
+    float F = .02 + .98*pow(1. - clamp(sin(gf + md), 0., 1.), 5.);
+    vec3 dr = vec3(sin(azr + uCam)*cos(er), sin(er), cos(azr + uCam)*cos(er));
+    vec3 refl = skyBlur(azr, er, 2.*sd) + night(dr)*transTop(uObsR, dr.y);
+    float gl1 = texture(uWave, q/(2.6*32.) + vec2(0, uU*.021)).x, gl2 = texture(uWave, q.yx/(1.3*32.) - vec2(uU*.017, 0)).x;
+    float spark = .25 + 2.2*smoothstep(.05, .45, gl1 + .6*gl2);
+    vec3 surf = F*refl + texture(uStarR, px/uRes).rgb*spark + uBody*sky(azo, .5)*(1. - F);
+    vec3 sR, sM, sS, ex; medium(uObsH*.5, sR, sM, sS, ex);
+    col += cov*(surf*exp(-ex*t) + sky(azo, e));
+  }
+  col *= grad(azo, el > dip ? el : 2.*dip - el);
+  col = mix(vec3(dot(col, vec3(.2126, .7152, .0722))), col, uSat)*uTint;
+  o = vec4(max(col, 0.), 1);
+}`;
+
+// bloom pyramid (13-tap), alpha carries the halation source
+const FS_DOWN = HEAD + `in vec2 vUv; out vec4 o; uniform sampler2D uSrc; uniform vec2 uTexel; uniform float uFirst, uThr;
+vec4 s(vec2 d){ return texture(uSrc, vUv + d*uTexel); }
+void main(){
+  vec4 r = s(vec2(0))*.125 + (s(vec2(-2,2)) + s(vec2(2,2)) + s(vec2(-2,-2)) + s(vec2(2,-2)))*.03125
+    + (s(vec2(0,2)) + s(vec2(-2,0)) + s(vec2(2,0)) + s(vec2(0,-2)))*.0625 + (s(vec2(-1,1)) + s(vec2(1,1)) + s(vec2(-1,-1)) + s(vec2(1,-1)))*.125;
+  if (uFirst > .5) r.a = max(r.r - uThr, 0.) + .15*max(r.g - uThr, 0.);
+  o = r;
+}`;
+
+// film: halation, softness, negative/print curve, grain that lives in the density, dither
+const FS_FINAL = HEAD + `in vec2 vUv; out vec4 o;
+uniform sampler2D uScene, uB0, uB1, uB2, uB3, uB4, uB5; uniform vec2 uOut; uniform float uCss, uSeed, uPush; uniform vec3 uToe, uSh, uFilt;
+vec4 cubic(float v){ vec4 n = vec4(1, 2, 3, 4) - v, s = n*n*n; float x = s.x, y = s.y - 4.*s.x, z = s.z - 4.*s.y + 6.*s.x; return vec4(x, y, z, 6. - x - y - z)/6.; }
+vec4 bicubic(sampler2D t, vec2 uv){
+  vec2 sz = vec2(textureSize(t, 0)); uv = uv*sz - .5; vec2 f = fract(uv); uv -= f;
+  vec4 xc = cubic(f.x), yc = cubic(f.y), c = uv.xxyy + vec2(-.5, 1.5).xyxy, s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
+  vec4 of = (c + vec4(xc.yw, yc.yw)/s)/sz.xxyy;
+  float sx = s.x/(s.x + s.y), sy = s.z/(s.z + s.w);
+  return mix(mix(texture(t, of.yw), texture(t, of.xw), sx), mix(texture(t, of.yz), texture(t, of.xz), sx), sy);
+}
+uvec3 pcg(uvec3 v){ v = v*1664525u + 1013904223u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; v ^= v >> 16u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; return v; }
+vec4 h4(vec2 c, float s){ uvec3 a = pcg(uvec3(uvec2(ivec2(c) + 8192), uint(s))), b = pcg(a ^ uvec3(0x9e3779b9u)); return vec4(a.xy, b.xy)/4294967295. - .5; }
+vec4 vn(vec2 p, float s){ vec2 i = floor(p), f = p - i;
+  return mix(mix(h4(i, s), h4(i + vec2(1, 0), s), f.x), mix(h4(i + vec2(0, 1), s), h4(i + 1., s), f.x), f.y); }
+vec4 grain(vec2 p, float s){ // two offset, rotated lattices of soft value noise; x shared, yzw per channel; ~unit variance
+  return (vn(p, s) + vn(mat2(.866, .5, -.5, .866)*p + vec2(.5, .25), s + 1.))*2.45;
+}
+void main(){
+  vec3 sc = bicubic(uScene, vUv).rgb;
+  vec4 b0 = texture(uB0, vUv), b1 = bicubic(uB1, vUv), b2 = bicubic(uB2, vUv), b3 = bicubic(uB3, vUv), b4 = bicubic(uB4, vUv), b5 = bicubic(uB5, vUv);
+  vec3 soft = mix(sc, b0.rgb, .38);                                   // a lens a little out of focus
+  vec3 glow = b1.rgb*.28 + b2.rgb*.26 + b3.rgb*.2 + b4.rgb*.15 + b5.rgb*.11;
+  float hal = b1.a*.25 + b2.a*.35 + b3.a*.28 + b4.a*.12;
+  vec3 x = soft*.8 + glow*.2 + hal*vec3(1., .3, .13)*.5;
+  // exposure is already in; to log exposure (stops about mid grey)
+  vec3 le = log2(max(x, vec3(1e-7))/.18);
+  float ll = dot(le, vec3(.28, .6, .12));
+  le = mix(le, vec3(ll), .14) + uFilt;                                 // a little faded, then filtered
+  // grain: coarse in shadows and mids, fine in highlights, grows when pushed
+  vec2 gp = gl_FragCoord.xy/uCss;
+  float coarse = smoothstep(2.2, -1.2, ll);
+  // fixed-size layers blended by tone (a lattice whose scale followed the tone would moire)
+  float wc = coarse*(1. - .3*min(uPush, 1.)), wp = .3*min(uPush, 1.)*coarse + .12*coarse, wf = max(1. - wc - wp, 0.);
+  vec4 gg = (grain(gp/.75, uSeed*3.)*wf + grain(gp/1.35 + 17.3, uSeed*3. + 1.)*wc + grain(gp/2.1 + 41.9, uSeed*3. + 2.)*wp)/sqrt(wf*wf + wc*wc + wp*wp);
+  vec3 g = gg.x*.85 + gg.yzw*vec3(.4, .4, .46);
+  float amp = mix(.05, .1, coarse)*(1. + .38*uPush);
+  le += g*amp;
+  // negative -> print: soft toe (matte, cool) and soft shoulder (cream)
+  vec3 toe = uToe, sh = uSh;
+  const vec3 k = vec3(.8, .78, .75), off = vec3(.3, .32, .4);
+  vec3 y = toe + (sh - toe)/(1. + exp(-k*(le - off)*1.18));
+  // dither (TPDF)
+  vec4 hd = h4(gl_FragCoord.xy, uSeed + 5000.); float d = hd.x + hd.y;
+  o = vec4(y + d/255., 1);
+}`;
+
+// --------------------------------------------------------------- build ----
+const P_NOISE = program(FS_NOISE), P_TRANS = program(FS_TRANS), P_MS = program(FS_MS), P_SKY = program(FS_SKY), P_BLUR = program(FS_BLUR);
+const P_SCENE = program(FS_SCENE), P_DOWN = program(FS_DOWN), P_FINAL = program(FS_FINAL);
+const P_STAR = program(FS_STAR, VS_STAR), P_STARR = program(FS_STARR, VS_STARR);
+
+const NOISE = texture(256, 256, { wrap: gl.REPEAT }), WAVE = texture(256, 256, { wrap: gl.REPEAT });
+target(NOISE); use(P_NOISE, { uKind: 0 }); quad();
+target(WAVE); use(P_NOISE, { uKind: 1 }); quad();
+
+function atmUniforms(E) {
+  const a = E.air, ang = [Math.pow(680 / 550, -a.ang), 1, Math.pow(440 / 550, -a.ang)];
+  const mie = ang.map(x => 3.996e-3 * a.mie * x);
+  const abs = a.dust ? [0.25, 0.42, 0.9].map(x => x * 3.996e-3 * a.mie * a.abs * 0.35) : mie.map(x => x * a.abs * 0.11);
+  const sa = [Math.pow(680 / 550, -1.35), 1, Math.pow(440 / 550, -1.35)];
+  return {
+    uRay: [5.802e-3, 13.558e-3, 33.1e-3, 8], uMie: [...mie, a.mieH], uMieX: [...abs, a.g],
+    uStr: [...sa.map(x => x * (a.str || 0.0008)), 21], uStrX: [0, 0, 0, 2.6], uOzone: [1.5e-3, 1.881e-3, 0.085e-3].map(x => x * a.oz),
+    uG: a.g, uStrG: 0.7,
+  };
+}
+function bindStars(E, prog, divisor) {
+  const v = gl.createVertexArray(); gl.bindVertexArray(v);
+  gl.bindBuffer(gl.ARRAY_BUFFER, E.starBuf);
+  const lp = gl.getAttribLocation(prog.p, 'aPos'), lc = gl.getAttribLocation(prog.p, 'aCol');
+  gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 3, gl.FLOAT, false, 24, 0); gl.vertexAttribDivisor(lp, divisor);
+  gl.enableVertexAttribArray(lc); gl.vertexAttribPointer(lc, 3, gl.FLOAT, false, 24, 12); gl.vertexAttribDivisor(lc, divisor);
+  gl.bindVertexArray(null);
+  return v;
+}
+for (const E of EVENINGS) {
+  E.U = atmUniforms(E);
+  E.trans = texture(256, 64, { fmt: gl.RGBA32F, filter: gl.LINEAR });
+  target(E.trans); use(P_TRANS, E.U); quad();
+  E.ms = texture(128, 32, { fmt: gl.RGBA16F });
+  target(E.ms); use(P_MS, { ...E.U, uTrans: E.trans.t, uAlbedo: 0.06 }); quad();
+  E.starBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, E.starBuf); gl.bufferData(gl.ARRAY_BUFFER, E.stars, gl.STATIC_DRAW);
+  E.nStars = E.stars.length / 6;
+  E.vao = bindStars(E, P_STAR, 0); E.vaoR = bindStars(E, P_STARR, 1);
+  const s = E.sea; E.seaU = [s.swell, s.chop, s.chop * 0.7, 0];
+  E.su = Math.sqrt(s.swell * s.swell * 2 + s.chop * s.chop * 4 + E.seaU[2] * E.seaU[2]);
+}
+
+// ------------------------------------------------------------- exposure ----
+// A patient photographer: meter the sky, open slowly, never all the way.
+const METER_STEP = 0.5, METER_N = Math.ceil((CYCLE + FADE + 4) / METER_STEP) + 1;
+const METER = texture(24 * METER_N, 12, { fmt: gl.RGBA32F, filter: gl.NEAREST });
+for (const E of EVENINGS) {
+  target(METER);
+  for (let i = 0; i < METER_N; i++) {
+    const u = -4 + i * METER_STEP, s = sunState(E, u);
+    gl.viewport(i * 24, 0, 24, 12);
+    use(P_SKY, { ...E.U, uTrans: E.trans.t, uMS: E.ms.t, uLut: [24, 12], uMap: [38 * D, 0, 0, 0], uCam: CAM, uTop: 27 * D, uMeter: 1,
+      uSun: s.dir, uObsR: 6360 + SITE.obs, uExpo: 1, uSteps: 24 });
+    quad();
+  }
+  const px = new Float32Array(24 * METER_N * 12 * 4);
+  gl.readPixels(0, 0, 24 * METER_N, 12, gl.RGBA, gl.FLOAT, px);
+  E.meter = [];
+  for (let i = 0; i < METER_N; i++) {
+    let s = 0, l = 0;
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 24; x++) {
+      const k = (y * 24 * METER_N + i * 24 + x) * 4, Y = 0.2126 * px[k] + 0.7152 * px[k + 1] + 0.0722 * px[k + 2] + 1.6e-7; // + the airglow and the Milky Way
+      s += Math.log2(Y); l += Y;
+    }
+    E.meter.push(0.5 * s / 288 + 0.5 * Math.log2(l / 288));
+  }
+}
+function meterAt(E, u) { const x = (u + 4) / METER_STEP, i = Math.max(0, Math.min(METER_N - 2, Math.floor(x))), f = Math.min(1, Math.max(0, x - i)); return E.meter[i] * (1 - f) + E.meter[i + 1] * f; }
+function targetEV(E, u) {
+  // overexposed like a negative for soft prints; follows a brightening sky fully, a darkening one only in part
+  const m = meterAt(E, u), m0 = E.meter[8], d = m0 - m;
+  return Math.log2(0.18) - m0 + 0.35 + (d > 0 ? d * 0.86 : d) + E.exp;
+}
+function exposure(E, u) { let s = 0, w = 0; for (let i = 0; i < 14; i++) { const k = Math.exp(-i * 0.3 / 1.4); s += k * targetEV(E, u - i * 0.3); w += k; } return Math.pow(2, s / w); }
+function push(E, u) { return Math.max(0, Math.log2(exposure(E, u)) - Math.log2(exposure(E, 4))); }
+
+// -------------------------------------------------------------- targets ----
+// the camera: level, horizon a little below the middle, 27 degrees of sky above it
+const HZ = 0.42, TOP = 27 * D, GAIN = 18;
+const LUT = texture(320, 192), RB = texture(320, 192 * 6);
+let W = 0, H = 0, SW = 0, SH = 0, css = 1, STAR, STARR, SCENE, B = [], CAMF, MAP;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(8.3e6 / Math.max(innerWidth * innerHeight, 1))); // at most ~4K of pixels
+  const w = Math.max(2, Math.round(innerWidth * dpr)), h = Math.max(2, Math.round(innerHeight * dpr));
+  if (w === W && h === H) return false;
+  W = w; H = h; cv.width = W; cv.height = H; css = dpr;
+  const sc = Math.min(1, 1800 / Math.max(innerWidth, 1)) * Math.min(dpr, 1.25);
+  SW = Math.round(innerWidth * sc); SH = Math.round(innerHeight * sc);
+  for (const T of [STAR, STARR, SCENE, ...B]) if (T) { gl.deleteTexture(T.t); gl.deleteFramebuffer(T.f); }
+  STAR = texture(SW, SH); STARR = texture(SW, SH); SCENE = texture(SW, SH);
+  B = []; let bw = SW, bh = SH;
+  for (let i = 0; i < 6; i++) { bw = Math.max(1, bw >> 1); bh = Math.max(1, bh >> 1); B.push(texture(bw, bh)); }
+  const f = (1 - HZ) * SH / Math.tan(TOP);
+  CAMF = [SW / 2, HZ * SH, f];
+  MAP = [Math.atan(SW / 2 / f) + 3 * D, -Math.atan(HZ * SH / f) - 1 * D, -Math.acos(6360 / (6360 + SITE.obs)), 50 * D];
+  return true;
+}
+
+// ------------------------------------------------------------- timeline ----
+function timeline(t) {
+  t = ((t % LOOP) + LOOP) % LOOP;
+  const i = Math.floor(t / CYCLE), u = t - i * CYCLE;
+  if (u < FADE) { const x = u / FADE, w = x * x * (3 - 2 * x); return [{ e: (i + N - 1) % N, u: u + CYCLE, w: 1 - w }, { e: i, u, w }]; }
+  return [{ e: i, u, w: 1 }];
+}
+
+function drawEvening(E, u, w) {
+  const s = sunState(E, u), ex = exposure(E, u);
+  const common = { ...E.U, uTrans: E.trans.t, uMS: E.ms.t, uNoise: NOISE.t, uLut: [LUT.w, LUT.h], uMap: MAP, uCam: CAM, uCamF: CAMF,
+    uRes: [SW, SH], uSun: s.dir, uObsR: 6360 + SITE.obs, uObsH: SITE.obs, uExpo: ex, uLst: s.lst, uLat: PHI, uU: u, uGain: GAIN };
+  gl.disable(gl.BLEND);
+  target(LUT); use(P_SKY, { ...common, uSteps: 80, uMeter: 0 }); quad();
+  target(RB);
+  for (let l = 0; l < 6; l++) { gl.viewport(0, l * LUT.h, LUT.w, LUT.h); use(P_BLUR, { uSky: LUT.t, uLut: [LUT.w, LUT.h], uMap: MAP, uSig: 0.0061 * Math.pow(2, l), uRow: l * LUT.h }); quad(); }
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.clearColor(0, 0, 0, 1);
+  target(STAR); gl.clear(gl.COLOR_BUFFER_BIT);
+  use(P_STAR, common); gl.bindVertexArray(E.vao); gl.drawArrays(gl.POINTS, 0, E.nStars);
+  target(STARR); gl.clear(gl.COLOR_BUFFER_BIT);
+  use(P_STARR, { ...common, uSu: E.su }); gl.bindVertexArray(E.vaoR); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, E.nBright);
+  gl.bindVertexArray(null);
+  target(SCENE); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE); gl.blendColor(0, 0, 0, w);
+  use(P_SCENE, { ...common, uSky: LUT.t, uRB: RB.t, uStars: STAR.t, uStarR: STARR.t, uWave: WAVE.t, uSea: E.seaU,
+    uBody: [0.012, 0.03, 0.036], uTint: toward(E.tint, NIGHT.tint, nightW(E, u)), uSat: E.sat + (1 - E.sat) * nightW(E, u), uGainN: GAIN * ex, uGrad: 0.7 });
+  quad();
+  gl.disable(gl.BLEND);
+}
+
+// as the evening goes, every print drifts to the same night stock: an inky blue black
+const NIGHT = { toe: [0.066, 0.08, 0.125], filt: [-0.12, -0.04, 0.12], tint: [0.96, 1, 1.05] };
+const nightW = (E, u) => { const x = Math.min(1, Math.max(0, (-8 - sunAlt(E, u)) / 5.5)); return x * x * (3 - 2 * x); };
+const toward = (a, b, n) => a.map((v, j) => v + (b[j] - v) * n);
+const printAt = (E, u, k) => NIGHT[k] ? toward(E.print[k], NIGHT[k], nightW(E, u)) : E.print[k];
+const mixW = (L, k) => [0, 1, 2].map(j => L.reduce((a, e) => a + e.w * printAt(EVENINGS[e.e], e.u, k)[j], 0));
+function render(t) {
+  const L = timeline(t);
+  target(SCENE); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  L.forEach(e => drawEvening(EVENINGS[e.e], e.u, e.w));
+  let src = SCENE;
+  B.forEach((T, i) => { target(T); use(P_DOWN, { uSrc: src.t, uTexel: [1 / src.w, 1 / src.h], uFirst: i === 0 ? 1 : 0, uThr: 1.1 }); quad(); src = T; });
+  target(null);
+  const pu = L.reduce((a, e) => a + e.w * push(EVENINGS[e.e], e.u), 0);
+  use(P_FINAL, { uScene: SCENE.t, uB0: B[0].t, uB1: B[1].t, uB2: B[2].t, uB3: B[3].t, uB4: B[4].t, uB5: B[5].t,
+    uToe: mixW(L, 'toe'), uSh: mixW(L, 'sh'), uFilt: mixW(L, 'filt'), uOut: [W, H], uCss: css, uSeed: Math.floor(((t % LOOP) + LOOP) % LOOP * FPS) % 997, uPush: Math.min(pu / 12, 1.4) });
+  quad();
+  // the caption: out first, in after
+  let op = 0, txt = '';
+  if (L.length === 1) { op = 1; txt = EVENINGS[L[0].e].note; }
+  else { const x = L[1].u / FADE; if (x < 0.45) { op = 1 - x / 0.45; txt = EVENINGS[L[0].e].note; } else if (x > 0.6) { op = (x - 0.6) / 0.4; txt = EVENINGS[L[1].e].note; } }
+  if (note.textContent !== txt) { note.textContent = txt; note.className = EVENINGS.find(E => E.note === txt)?.side || ''; }
+  note.style.opacity = (op * 0.62).toFixed(3);
+}
+// ------------------------------------------------------------------ run ----
+let frozen = null;
+function readHash() { const m = /t=([-\d.]+)/.exec(location.hash); frozen = m ? +m[1] : null; }
+readHash(); addEventListener('hashchange', () => { readHash(); dirty = true; });
+let dirty = true; addEventListener('resize', () => { dirty = true; });
+const t0 = performance.now();
+window.__dusk = { frames: 0 };
+function loop() {
+  const rs = resize(), t = frozen !== null ? frozen : Math.floor((performance.now() - t0) / 1000 * FPS) / FPS;
+  if (t !== window.__dusk.t || dirty || rs) {
+    render(t); dirty = false; window.__dusk.frames++; window.__dusk.t = t;
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
