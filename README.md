@@ -8,7 +8,7 @@ AI × Web で、何ができるかを実験する。
 
 [**Gallery**](https://akkie8.github.io/ai-creative-lab/) · [Zenn](https://zenn.dev/aki1990) · [X](https://x.com/akiy_8)
 
-[![Carrow Lensing](assets/carrow-lensing.png)](https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/)
+[![Dusk](assets/dusk.png)](https://akkie8.github.io/ai-creative-lab/works/dusk/)
 
 </div>
 
@@ -18,25 +18,26 @@ AI Creative Lab は、モデルでつくり、ブラウザで動かし、その�
 
 <table>
 <tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/dusk/"><img src="assets/dusk.png" alt="Dusk"></a><br><b>Dusk</b><br><sub>Claude Opus 5.5 · 2026-10-01 · Generative art / WebGL2</sub></td>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/"><img src="assets/carrow-lensing.png" alt="Carrow Lensing"></a><br><b>Carrow Lensing</b><br><sub>Claude Opus 5.5 · 2026-09-30 · Generative art / WebGL2</sub></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/misregistered/"><img src="assets/misregistered.png" alt="MISREGISTERED"></a><br><b>MISREGISTERED</b><br><sub>Claude Opus 5.5 · 2026-09-25 · Motion graphics / WebGL2</sub></td>
-</tr>
-<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/vermilion-well/"><img src="assets/vermilion-well.png" alt="Vermilion Well"></a><br><b>Vermilion Well</b><br><sub>Claude Opus 5.5 · 2026-09-25 · Motion graphics / WebGL2</sub></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-botanical-laboratory/"><img src="assets/moonlit-botanical-laboratory.png" alt="Moonlit Botanical Laboratory"></a><br><b>Moonlit Botanical Laboratory</b><br><sub>Claude Opus 5.5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
-</tr>
-<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-herbarium/"><img src="assets/moonlit-herbarium.png" alt="The Moonlit Herbarium"></a><br><b>The Moonlit Herbarium</b><br><sub>Claude Opus 5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
-<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/"><img src="assets/nocturnal-conservatory.png" alt="The Nocturnal Conservatory"></a><br><b>The Nocturnal Conservatory</b><br><sub>GPT-6 Astra · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
 </tr>
 <tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/"><img src="assets/nocturnal-conservatory.png" alt="The Nocturnal Conservatory"></a><br><b>The Nocturnal Conservatory</b><br><sub>GPT-6 Astra · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/"><img src="assets/coral-reef.png" alt="サンゴ礁の一日"></a><br><b>サンゴ礁の一日 / Coral Reef Day</b><br><sub>Claude Opus 5.5 · 2026-09-23 · Pixel animation / Canvas 2D</sub></td>
-<td width="50%" valign="top"></td>
 </tr>
 </table>
 
 | 作品名 | モデル | 作成日 | 技法 | シリーズ |
 | --- | --- | --- | --- | --- |
+| [Dusk](https://akkie8.github.io/ai-creative-lab/works/dusk/) | Claude Opus 5.5（Claude Code） | 2026-10-01 | Generative art / WebGL2 / Atmospheric scattering / Film look / Single HTML | — |
 | [Carrow Lensing](https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/) | Claude Opus 5.5（Claude Code） | 2026-09-30 | Generative art / WebGL2 / Ray tracing / Invented physics / Single HTML | — |
 | [MISREGISTERED](https://akkie8.github.io/ai-creative-lab/works/misregistered/) | Claude Opus 5.5（Claude Code） | 2026-09-25 | Motion graphics / WebGL2 / Kinetic typography / Halftone / Single HTML | — |
 | [Vermilion Well](https://akkie8.github.io/ai-creative-lab/works/vermilion-well/) | Claude Opus 5.5（Claude Code） | 2026-09-25 | Motion graphics / WebGL2 / Shader / Single HTML | — |
@@ -51,7 +52,16 @@ AI Creative Lab は、モデルでつくり、ブラウザで動かし、その�
 | --- | --- | --- | --- |
 | モデルで作る | Labに実物を公開 | Zennに作り方と違いを書く | Xに動画を出す |
 
-**Fields** — **Pixel Art** (4) · **Motion** (2) · **Generative Art** (1) · 3D · Voice · Realtime UI · Agent UI · Character · Interactive Web · Visualization
+**Fields** — **Pixel Art** (4) · **Motion** (2) · **Generative Art** (2) · 3D · Voice · Realtime UI · Agent UI · Character · Interactive Web · Visualization
+
+## Dusk
+
+ポルトガルのロカ岬から西の大西洋を見る、ひとつの水平線で、日が沈んだあとの淡い夕暮れが30秒ずつ6晩続くループ。残照からブルーアワー、星の出る夜へ進み、次の晩の残照へ溶け替わります。晩ごとに日付と空気（ピナトゥボ噴火のあとの紫の光、サハラの砂塵、夏のもやなど）と古いフィルムのプリントが違い、光の帯の位置と色、海に映る色、出てくる惑星が変わります。HTML 1ファイル（748行・49,584 bytes）で、空はWebGL2で散乱を計算しています。
+
+- [作品を開く](experiments/dusk/opus-5-5/index.html) · [制作記録](https://akkie8.github.io/ai-creative-lab/works/dusk/) · [プロンプト](experiments/dusk/prompt.md) · [作品のREADME](experiments/dusk/README.md) · [全ループ1秒1コマ](experiments/dusk/loop.jpg) · [Phase 1 の静止画](experiments/dusk/phase1/)
+- 作成日：2026-09-30〜10-01。Claude Code（Opus 5.5、Effort xhigh）にプロンプトを1回送りました。プロンプトは2段階で、人が手を入れたのは3回です。Phase 1 の途中で止めて「日の入りの強い光・雲・建造物をなくし、1か所・1アングルで淡い夕暮れの色と海の反射と星空を」と方向を変えたのが2回、Phase 1 の静止画に「素敵、Phase 2 に進めて」と返したのが1回です。作品のコードへの人の修正はありません。
+- 生成時間 2時間1分21秒（Phase 1 v1 35分14秒 + v2 44分20秒 + Phase 2 41分47秒。人の返信を待った時間は除く）/ モデル呼び出し 224回 / Input 38,161,315（うちキャッシュ読出し 37,118,677）/ Output 465,654 / Total 38,626,969 tokens。作品を作ったセッションのログから区間ごとに集計した値で、コンテキスト上限による自動要約を含みます。コストは記録していません。
+- 180秒を1秒1コマで書き出して全部見て、1:1で縞を、0.2秒刻みでつなぎ目を測っています。フレーム時間は Apple M3 のヘッドレスChromium（Metal）で計測しています。
 
 ## Carrow Lensing
 
@@ -157,9 +167,10 @@ Magical Botanical Laboratoryを追試する場合は、新しいセッション�
 ```text
 index.html                              # Featured / Index / Fields / About
 assets/
-  site.css                              # 8ページ共通CSS
+  site.css                              # 9ページ共通CSS
   pixel-fit.js                          # サンゴ礁の整数倍表示
   copy.js                               # プロンプトのコピー
+  dusk.png
   carrow-lensing.png
   misregistered.png
   vermilion-well.png
@@ -169,6 +180,7 @@ assets/
   nocturnal-conservatory.png
   *.jpg                                 # 既存の比較素材・OGP
 works/
+  dusk/index.html
   carrow-lensing/index.html
   misregistered/index.html
   vermilion-well/index.html
@@ -179,7 +191,13 @@ works/
 prompt.md                               # 植物研究室の共通プロンプト全文
 metrics.md                              # 植物研究室の計測記録・換算前提
 README.md
-checksums.sha256                        # 7作品のSHA-256
+checksums.sha256                        # 8作品のSHA-256
+experiments/dusk/
+  README.md
+  prompt.md
+  opus-5-5/index.html                    # 作品原本
+  loop.jpg                              # 全ループ1秒1コマのコンタクトシート
+  phase1/                               # Phase 1 の静止画
 experiments/carrow-lensing/
   README.md
   prompt.md
@@ -209,7 +227,7 @@ experiments/magical-botanical-laboratory/
 
 ## 原本とプレビュー
 
-`checksums.sha256` は植物研究室の元の添付HTML、サンゴ礁・Vermilion Well・MISREGISTERED・Carrow Lensingの収録HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
+`checksums.sha256` は植物研究室の元の添付HTML、サンゴ礁・Vermilion Well・MISREGISTERED・Carrow Lensing・Duskの収録HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
 
 既存の植物研究室のJPEG画像は別途作成した比較素材です。各作品の表示領域は640×480 CSS px、表示倍率100%、devicePixelRatio 1、reduced-motionはno-preference。Chromiumの共通仮想時計で64msのウォームアップ後、12秒時点を撮影したものです。単体画像にはモデル名と生成時間のラベルを加えています。乱数は固定していないため、再読込時のイベントは一致しない場合があります。画像のラベルやギャラリーの装飾は作品本体には含まれません。
 
