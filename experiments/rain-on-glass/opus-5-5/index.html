@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rain on Glass</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#15181c}
+canvas{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#note{position:fixed;left:30px;bottom:24px;margin:0;font:italic 400 12.5px/1 Georgia,"Times New Roman",serif;letter-spacing:.06em;color:#ece4d6;opacity:0;white-space:pre;pointer-events:none;user-select:none;-webkit-font-smoothing:antialiased}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p id="note"></p>
+<script>
+'use strict';
+// ============================================================================
+// Rain on Glass — one window, one street, four nights.
+// The camera is focused on the pane. The street behind it is far out of focus.
+// Every drop on the glass is a small lens holding the whole street, upside down.
+// Everything is a function of the loop time t (seconds). #t=12.5 freezes.
+// ============================================================================
+
+const NIGHT = 180, NN = 4, LOOP = NIGHT * NN, FPS = 30, DT = 1 / FPS;
+const U0 = -40;          // each night's glass has been in the rain for 40 s before it shows
+const XW = 6;            // drops of two nights cross over 2*XW seconds, deep in the dawn mist
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mix = (a, b, t) => a + (b - a) * t;
+const mix3 = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+
+// ------------------------------------------------------------------ street --
+// Glass and scene share one frame of reference: y = 0..1 bottom to top of the
+// view, x = 0 at the centre, one unit = the view's height. The view is a
+// second-floor window across a narrow street; a convenience store opposite,
+// bars on the near left, the street running away to the left of centre.
+const ground = x => 0.2 + 0.27 * Math.exp(-(((x + 0.17) / 0.2) ** 2)) + 0.06 * sstep(-0.3, -0.55, x);
+
+// colours, linear, before the film. Restrained on purpose: the print fades them further.
+const C = {
+  sodium: [1, 0.56, 0.24], store: [0.84, 1, 0.9], neon: [1, 0.3, 0.22], pink: [1, 0.46, 0.6], jade: [0.42, 1, 0.62],
+  amber: [1, 0.72, 0.34], lantern: [1, 0.44, 0.2], warm: [1, 0.74, 0.46], cool: [0.7, 0.8, 1], vend: [0.78, 0.9, 1],
+  aqua: [0.5, 0.8, 1], cream: [1, 0.92, 0.76], laundry: [0.62, 0.86, 1],
+};
+
+// area of a box (half sizes h) grown by r
+const areaR = (h, r) => 4 * h[0] * h[1] + 4 * r * (h[0] + h[1]) + Math.PI * r * r;
+
+// a part: c centre, h half size of the sharp source, R its blur radius on the
+// glass (depends on distance), rs its sharp rounding, kind 0 = a lens disc, 1 = a soft area
+function part(c, h, R, lum, o = {}) {
+  const p = { c, h, R, lum, rs: o.rs ?? 0.005, kind: o.kind ?? 0, soft: o.soft ?? 0.16, col: o.col || null, refl: o.refl ?? 0 };
+  const ratio = areaR(h, R) / areaR(h, p.rs);
+  p.ratio = ratio / (1 + ratio / 34);                        // sharp radiance, softly limited
+  return p;
+}
+function withRefl(parts) { // wet asphalt: a soft vertical smear below each source
+  const out = [];
+  for (const p of parts) {
+    out.push(p);
+    if (!p.refl) continue;
+    const g = ground(p.c[0]), dy = Math.max(p.c[1] - g, 0.02);
+    out.push(part([p.c[0], g - dy * 0.5 - 0.02], [p.h[0] * 1.15 + 0.004, p.h[1] + dy * 0.32], p.R * 1.05, p.lum * p.refl,
+      { kind: 1, rs: 0.006, col: p.col }));
+  }
+  return out;
+}
+
+const STREET = (() => {
+  const R = mulberry32(7), L = [];
+  const add = (id, type, col, parts) => L.push({ id, type, col, parts: withRefl(parts) });
+  // the convenience store opposite: a bright room, its shelves, its fascia, its light on the pavement
+  const shelves = [];
+  for (let i = 0; i < 9; i++) shelves.push(part([0.27 + 0.56 * (i + R() * 0.6) / 9, 0.25 + 0.13 * R()], [0.004, 0.004], 0.064 + 0.012 * R(), 0.55 + 0.45 * R(), { rs: 0.003 }));
+  add('store', 'store', C.store, [
+    part([0.545, 0.315], [0.3, 0.088], 0.075, 0.7, { kind: 1, rs: 0.004 }),
+    ...shelves,
+    part([0.545, 0.215], [0.36, 0.022], 0.07, 0.28, { kind: 1, rs: 0.01 }),
+    part([0.545, 0.105], [0.3, 0.07], 0.08, 0.2, { kind: 1, rs: 0.012 }),
+  ]);
+  add('fascia', 'sign', C.aqua, [
+    part([0.545, 0.447], [0.3, 0.011], 0.07, 0.6, { rs: 0.004 }),
+    part([0.545, 0.468], [0.3, 0.006], 0.07, 0.45, { rs: 0.003, col: C.cream }),
+    part([0.545, 0.072], [0.28, 0.02], 0.075, 0.12, { kind: 1, rs: 0.01 }),
+  ]);
+  // windows on the floors above the store
+  const win = [[0.17, 0.6], [0.36, 0.62], [0.47, 0.585], [0.66, 0.615], [0.83, 0.6], [0.215, 0.79], [0.39, 0.815], [0.56, 0.78], [0.735, 0.805], [0.885, 0.79], [0.3, 0.965], [0.64, 0.98], [-0.27, 0.71], [-0.14, 0.645]];
+  win.forEach((w, i) => {
+    const far = w[0] < 0, warm = R() < 0.72;
+    add('w' + i, 'window', warm ? C.warm : C.cool, [part(w, far ? [0.006, 0.006] : [0.011, 0.009], far ? 0.042 : 0.058 + 0.012 * R(), (far ? 1.0 : 0.95) + 0.35 * R(), { rs: 0.002, soft: 0.2 })]);
+  });
+  // near left: a tall sign down the corner of the building, letter by letter
+  const tate = [];
+  for (let i = 0; i < 5; i++) tate.push(part([-0.605 + 0.004 * R(), 0.52 + i * 0.077], [0.018, 0.022], 0.094 + 0.006 * R(), 0.85 + 0.25 * R(), { rs: 0.004, refl: i === 0 ? 0.12 : 0 }));
+  add('tate', 'neon', C.neon, tate);
+  add('lanterns', 'neon', C.lantern, [
+    part([-0.47, 0.36], [0.008, 0.012], 0.088, 1.0, { rs: 0.01, refl: 0.2 }),
+    part([-0.385, 0.372], [0.008, 0.012], 0.084, 0.95, { rs: 0.01, refl: 0.2 }),
+  ]);
+  add('pink', 'neon', C.pink, [part([-0.75, 0.29], [0.05, 0.012], 0.092, 0.8, { rs: 0.004, refl: 0.15 })]);
+  // down the street: smaller, farther signs
+  add('jade', 'neon', C.jade, [part([-0.31, 0.56], [0.008, 0.03], 0.054, 1.1, { rs: 0.003, refl: 0.18 })]);
+  add('amber', 'neon', C.amber, [part([-0.225, 0.51], [0.018, 0.01], 0.047, 1.2, { rs: 0.003, refl: 0.2 })]);
+  add('rose', 'neon', C.pink, [part([-0.37, 0.64], [0.006, 0.024], 0.058, 0.9, { rs: 0.003 })]);
+  add('laundry', 'neon', C.laundry, [part([-0.075, 0.53], [0.026, 0.008], 0.043, 0.9, { rs: 0.003, refl: 0.2 })]);
+  add('vend', 'vend', C.vend, [part([-0.125, 0.445], [0.01, 0.018], 0.048, 1.1, { rs: 0.003, refl: 0.25 })]);
+  // sodium streetlights along the street, near to far, each with its pool on the wet road
+  const sl = [[-0.83, 0.97, 0.118], [-0.345, 0.8, 0.078], [-0.205, 0.685, 0.058], [-0.115, 0.625, 0.045], [-0.055, 0.592, 0.037]];
+  sl.forEach((s, i) => add('sl' + i, 'sodium', C.sodium, [
+    part([s[0], s[1]], [0.002, 0.002], s[2], 2.2 + 0.6 * i, { rs: 0.003, refl: 0.06 }),
+    part([s[0] + 0.03, ground(s[0]) - 0.05 + 0.04 * i / 5], [0.08 * (1 - i * 0.15), 0.025], s[2] * 1.2, 0.07, { kind: 1, rs: 0.03 }),
+  ]));
+  return L;
+})();
+const byId = Object.fromEntries(STREET.map(l => [l.id, l]));
+
+// ------------------------------------------------------------------ nights --
+// Same window, same street. What changes: the rain, the order and the timing
+// in which the lights go out, which windows are lit, and the colour of the dawn.
+const NIGHTS = [
+  { seed: 3, clock: [2 * 60 + 7, 5 * 60 + 21], dawn: [0.25, 0.36, 0.54], dawnAt: 108, mist: 0.5,
+    rain: { rate: 38, rmin: 0.0015, rmax: 0.011, alpha: 1.15, pin0: 0.011, pin1: 0.008, rstop: 0.0042, rspan: 0.009, vmax: 0.15, bead: 0.016, pre: 1500 } },
+  { seed: 17, clock: [2 * 60 + 34, 5 * 60 + 33], dawn: [0.29, 0.34, 0.52], dawnAt: 112, mist: 0.42,
+    rain: { rate: 48, rmin: 0.0016, rmax: 0.012, alpha: 1.15, pin0: 0.012, pin1: 0.008, rstop: 0.004, rspan: 0.008, vmax: 0.18, bead: 0.013, pre: 1800 } },
+  { seed: 29, clock: [1 * 60 + 52, 5 * 60 + 9], dawn: [0.27, 0.36, 0.48], dawnAt: 104, mist: 0.62,
+    rain: { rate: 32, rmin: 0.0014, rmax: 0.009, alpha: 1.3, pin0: 0.01, pin1: 0.007, rstop: 0.0045, rspan: 0.01, vmax: 0.13, bead: 0.02, pre: 1200 } },
+  { seed: 41, clock: [2 * 60 + 18, 5 * 60 + 27], dawn: [0.23, 0.35, 0.55], dawnAt: 110, mist: 0.5,
+    rain: { rate: 42, rmin: 0.0015, rmax: 0.011, alpha: 1.2, pin0: 0.011, pin1: 0.008, rstop: 0.0042, rspan: 0.009, vmax: 0.16, bead: 0.015, pre: 1600 } },
+];
+NIGHTS.forEach((N, k) => {
+  const R = mulberry32(N.seed * 131 + 5), S = {};
+  // the signs close at irregular intervals through the closing hours
+  const signs = ['tate', 'lanterns', 'pink', 'jade', 'amber', 'rose', 'laundry'];
+  for (let i = signs.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [signs[i], signs[j]] = [signs[j], signs[i]]; }
+  let t = 36 + 6 * R();
+  for (const id of signs) { S[id] = { off: t, fade: 1.3 + 1.2 * R() }; t += 5 + 9 * R() + (R() < 0.3 ? 6 : 0); }
+  // windows: some dark all night, the rest go out one by one; one wakes at dawn
+  const wins = STREET.filter(l => l.type === 'window').map(l => l.id);
+  const dawnWin = ['w2', 'w7', 'w3', 'w6'][k];
+  for (const id of wins) {
+    if (id === dawnWin) { S[id] = { off: -1e9, on: 154 + 5 * R(), fade: 2.8 }; continue; }
+    if (R() < 0.25) { S[id] = { off: -1e9, fade: 1 }; continue; }
+    S[id] = { off: 8 + 115 * Math.pow(R(), 0.8), fade: 0.7 + 0.5 * R() };
+  }
+  S.fascia = { off: 112 + 10 * R(), fade: 1.6 };
+  S.vend = { off: 128 + 8 * R(), fade: 1.2 };
+  S.store = { off: 139 + 6 * R(), fade: 2.2 };
+  // the sodium lamps go last, slowly, warm to red as they cool
+  const sl = ['sl0', 'sl1', 'sl2', 'sl3', 'sl4'];
+  for (let i = sl.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [sl[i], sl[j]] = [sl[j], sl[i]]; }
+  let ts = 135 + 3 * R();
+  for (const id of sl) { S[id] = { off: ts, fade: 7 + 4 * R() }; ts += 2 + 3.2 * R(); }
+  N.S = S;
+});
+
+// how much of a light is on at night-time u (0..1), and its colour as it cools
+function lightState(N, l, u) {
+  const s = N.S[l.id];
+  if (s.on !== undefined) { const x = sstep(s.on, s.on + s.fade, u); return [x, l.col]; }
+  const x = clamp((u - s.off) / s.fade, 0, 1);
+  if (x <= 0) return [1, l.col];
+  if (x >= 1) return [0, l.col];
+  if (l.type === 'sodium') return [Math.pow(1 - sstep(0, 1, x), 1.3), mix3(l.col, [1, 0.3, 0.12], sstep(0, 0.8, x))];
+  if (l.type === 'neon') return [Math.pow(1 - x, 2.2) * (1 - 0.15 * Math.sin(x * Math.PI)), mix3(l.col, mix3(l.col, [1, 0.2, 0.25], 0.35), x)];
+  return [Math.pow(1 - sstep(0, 1, x), 1.6), l.col];
+}
+
+// the sky beyond the roofs: blue-black, then a cold pale blue
+function skyState(N, u) {
+  const d = Math.pow(sstep(N.dawnAt, 168, u), 1.5);
+  const hor = mix3([0.0062, 0.0071, 0.0118], N.dawn, d), zen = mix3([0.0028, 0.0034, 0.0066], N.dawn.map(v => v * 0.72), d);
+  let glow = 0;
+  for (const id of ['sl0', 'sl1', 'sl2', 'sl3', 'sl4']) glow += lightState(N, byId[id], u)[0];
+  return { hor, zen, glow: glow / 5 + 0.25 * lightState(N, byId.store, u)[0], d };
+}
+
+// ----------------------------------------------------------------- primitives --
+const MAXP = 360, PD = new Float32Array(MAXP * 12);
+let PN = 0;
+function pushNight(N, u, w) {
+  for (const l of STREET) {
+    const [I, col] = lightState(N, l, u);
+    if (I * w < 1e-4) continue;
+    for (const p of l.parts) {
+      if (PN >= MAXP) return;
+      const c = p.col || col, L = p.lum * I * w, o = PN * 12;
+      PD[o] = p.c[0]; PD[o + 1] = p.c[1]; PD[o + 2] = p.h[0]; PD[o + 3] = p.h[1];
+      PD[o + 4] = p.R; PD[o + 5] = p.rs; PD[o + 6] = p.soft; PD[o + 7] = p.kind;
+      PD[o + 8] = c[0] * L; PD[o + 9] = c[1] * L; PD[o + 10] = c[2] * L; PD[o + 11] = p.ratio;
+      PN++;
+    }
+  }
+}
+// the photographer's meter: light gathered by the frame
+function meter(N, u) {
+  let m = 0;
+  for (const l of STREET) {
+    const I = lightState(N, l, u)[0];
+    if (I < 1e-4) continue;
+    for (const p of l.parts) if (Math.abs(p.c[0]) < 0.95) m += p.lum * I * areaR(p.h, p.R) * (p.col || l.col)[1];
+  }
+  const s = skyState(N, u);
+  return m + 0.7 * (0.7 * s.hor[1] + 0.3 * s.zen[1]) + 0.004;
+}
+
+// --------------------------------------------------------------------- glass --
+// Rain arrives, drops grow and merge; a drop heavy enough lets go and runs,
+// sweeping up what it meets, shedding beads, wiping a path through the mist.
+// Deterministic: each night's glass is simulated from U0 in steps of 1/30 s.
+const GD = [-1.34, -0.1, 1.34, 1.12], CS = 0.026;
+const GNX = Math.ceil((GD[2] - GD[0]) / CS), GNY = Math.ceil((GD[3] - GD[1]) / CS);
+function density(k, x, y) { // the top of the pane is sheltered by the eave; the wind leaves calm patches
+  const sh = sstep(0.5, 1.02, y + 0.08 * Math.sin(x * 2.3 + k * 1.7));
+  const n = 0.5 + 0.28 * Math.sin(2.1 * x + 1.3 * y + k * 2.1) + 0.22 * Math.sin(-1.5 * x + 2.9 * y + k * 4.3);
+  const qx = [-0.18, 0.02, -0.3, 0.1][k], qy = [0.8, 0.84, 0.76, 0.82][k];
+  const calm = Math.exp(-(((x - qx) / 0.36) ** 2 + ((y - qy) / 0.24) ** 2));
+  return (0.07 + 0.93 * sstep(0.28, 0.78, n)) * (1 - 0.88 * sh) * (1 - 0.93 * calm);
+}
+class Glass {
+  constructor(k) { this.k = k; this.P = NIGHTS[k].rain; this.reset(); }
+  reset() {
+    this.R = mulberry32(NIGHTS[this.k].seed * 9973 + 1);
+    this.n = Math.round(U0 / DT); this.D = []; this.slides = []; this.segs = []; this.drawn = 0; this.dirty = true;
+    this.cells = Array.from({ length: GNX * GNY }, () => []);
+    for (let i = 0; i < this.P.pre; i++) this.impact(U0);
+    for (const d of this.D) d.born = -1e9;
+  }
+  ci(d) { return clamp(Math.floor((d.x - GD[0]) / CS), 0, GNX - 1) + GNX * clamp(Math.floor((d.y - GD[1]) / CS), 0, GNY - 1); }
+  ins(d) { d.c = this.ci(d); this.cells[d.c].push(d); }
+  out(d) { const a = this.cells[d.c], i = a.indexOf(d); if (i >= 0) { a[i] = a[a.length - 1]; a.pop(); } }
+  move(d) { const c = this.ci(d); if (c !== d.c) { this.out(d); d.c = c; this.cells[c].push(d); } }
+  kill(d) { d.alive = false; this.out(d); }
+  make(x, y, r, u) {
+    const R = this.R, P = this.P;
+    const d = { x, y, r, alive: true, s: false, pin: P.pin0 + P.pin1 * R(), sd: R() * 100, vy: 0, trav: 0, nb: 0, lx: x, ly: y,
+      th: 0.8 + 0.2 * R(), wob: 0.02 + 0.06 * R() * R(), ph: 6.283 * R(), born: u, c: 0 };
+    this.D.push(d); this.ins(d); return d;
+  }
+  hit(d, skip) {
+    const ix = Math.floor((d.x - GD[0]) / CS), iy = Math.floor((d.y - GD[1]) / CS), reach = Math.ceil((d.r + 0.012) / CS);
+    for (let j = iy - reach; j <= iy + reach; j++) {
+      if (j < 0 || j >= GNY) continue;
+      for (let i = ix - reach; i <= ix + reach; i++) {
+        if (i < 0 || i >= GNX) continue;
+        for (const e of this.cells[i + GNX * j]) {
+          if (e === d || e === skip) continue;
+          const dx = e.x - d.x, dy = e.y - d.y, rr = (d.r + e.r) * 0.92;
+          if (dx * dx + dy * dy < rr * rr) return e;
+        }
+      }
+    }
+    return null;
+  }
+  merge(d, u, skip) {
+    for (let it = 0; it < 10; it++) {
+      const e = this.hit(d, skip);
+      if (!e) break;
+      let big = d, small = e;
+      if (!d.s && (e.s || e.r > d.r)) { big = e; small = d; }
+      const V = big.r ** 3 + small.r ** 3, w = small.r ** 3 / V, k = big.s ? 0.25 : 1;
+      big.x += (small.x - big.x) * w * k; big.y += (small.y - big.y) * w * k;
+      big.r = Math.cbrt(V); big.born = Math.max(big.born, u - 1);
+      this.kill(small); this.move(big); d = big;
+      if (big.r > 0.0035) this.segs.push(big.x, big.y, big.x, big.y, big.r * 1.9, u);
+    }
+    return d;
+  }
+  impact(u) {
+    const R = this.R, P = this.P;
+    let x, y;
+    do { x = GD[0] + R() * (GD[2] - GD[0]); y = GD[1] + R() * (GD[3] - GD[1]); } while (R() > density(this.k, x, y));
+    const r = Math.min(P.rmin * Math.pow(1 - R() * 0.996, -1 / P.alpha), P.rmax);
+    const d = this.merge(this.make(x, y, r, u), u);
+    if (!d.s && d.r > d.pin && u > U0) this.slide(d);
+  }
+  slide(d) { if (!d.s) { d.s = true; d.vy = 0; d.nb = this.P.bead * (0.3 + this.R()); d.lx = d.x; d.ly = d.y; this.slides.push(d); } }
+  step() {
+    const u = this.n * DT, P = this.P, R = this.R;
+    // rain, a little softer toward dawn
+    let lam = P.rate * (GD[2] - GD[0]) * (GD[3] - GD[1]) * DT * (1 - 0.3 * sstep(125, 178, u));
+    let c = 0, q = Math.exp(-lam), s = q, x = R(); while (x > s && c < 60) { c++; q *= lam / c; s += q; }
+    for (let i = 0; i < c; i++) this.impact(u);
+    for (const d of this.slides) {
+      if (!d.alive || !d.s) continue;
+      const g = clamp((d.r - P.rstop) / P.rspan, 0, 1);
+      // stick and slip: a running drop hesitates where the glass holds it
+      const hold = Math.sin(d.trav * 83 + d.sd) * Math.sin(d.trav * 31 + d.sd * 1.7);
+      const vt = P.vmax * Math.pow(g, 0.7) * (hold > 0.45 ? 0.12 : 1);
+      d.vy += (vt - d.vy) * 0.22;
+      const dy = d.vy * DT;
+      d.y -= dy; d.trav += dy;
+      d.x += dy * (0.32 * Math.sin(d.trav * 19 + d.sd) + 0.14 * Math.sin(d.trav * 53 + d.sd * 2.3));
+      this.move(d);
+      this.merge(d, u);
+      if (d.trav > d.nb) { // shed a bead
+        const rb = d.r * (0.2 + 0.17 * R());
+        if (rb > 0.0011) {
+          d.r = Math.cbrt(d.r ** 3 - rb ** 3);
+          const b = this.make(d.x + (R() - 0.5) * d.r * 0.5, d.y + d.r * 1.15 + rb, rb, u);
+          b.pin = Math.max(b.pin, rb * 1.6);
+          this.merge(b, u, d);
+        }
+        d.nb = d.trav + P.bead * (0.4 + 1.2 * R());
+      }
+      if (this.n % 3 === 0) { this.segs.push(d.lx, d.ly, d.x, d.y, d.r * 1.55, u); d.lx = d.x; d.ly = d.y; }
+      if (d.r < P.rstop) { d.s = false; d.pin = d.r * 1.5 + P.pin0 * 0.5; d.vy = 0; }
+      if (d.y < GD[1] - 0.03) this.kill(d);
+    }
+    this.slides = this.slides.filter(d => d.alive && d.s);
+    for (const d of this.D) if (d.alive && !d.s && d.r > d.pin && R() < 0.02) this.slide(d);
+    this.n++;
+    if (this.n % 150 === 0) this.D = this.D.filter(d => d.alive);
+  }
+  advance(u, maxSteps = 1e9) {
+    const n = Math.floor(u / DT + 1e-6);
+    if (n < this.n) this.reset();
+    let k = 0;
+    while (this.n < n && k++ < maxSteps) this.step();
+  }
+}
+
+// ------------------------------------------------------------------- webgl --
+const cv = document.getElementById('c'), note = document.getElementById('note');
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, depth: false, premultipliedAlpha: false });
+gl.getExtension('EXT_color_buffer_float'); gl.getExtension('EXT_float_blend');
+const HEAD = '#version 300 es\nprecision highp float;\nprecision highp int;\n';
+const VS = HEAD + `out vec2 vUv; void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = p; gl_Position = vec4(p*2. - 1., 0, 1); }`;
+
+function sh(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s), lines = src.split('\n'), m = /0:(\d+)/.exec(log || ''), ln = m ? +m[1] : 0;
+    throw new Error(log + '\n' + lines.slice(Math.max(0, ln - 4), ln + 2).map((l, i) => (ln - 3 + i) + ': ' + l).join('\n'));
+  }
+  return s;
+}
+function program(fs, vs = VS) {
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name.replace(/\[0\]$/, '')] = { loc: gl.getUniformLocation(p, a.name), type: a.type }; }
+  let unit = 0; const units = {};
+  for (const k in u) if (u[k].type === gl.SAMPLER_2D) units[k] = unit++;
+  return { p, u, units };
+}
+function use(pr, vals) {
+  gl.useProgram(pr.p);
+  for (const k in vals) {
+    const e = pr.u[k]; if (!e) continue; const v = vals[k];
+    switch (e.type) {
+      case gl.FLOAT: gl.uniform1f(e.loc, v); break;
+      case gl.INT: gl.uniform1i(e.loc, v); break;
+      case gl.FLOAT_VEC2: gl.uniform2fv(e.loc, v); break;
+      case gl.FLOAT_VEC3: gl.uniform3fv(e.loc, v); break;
+      case gl.FLOAT_VEC4: gl.uniform4fv(e.loc, v); break;
+      case gl.SAMPLER_2D: gl.activeTexture(gl.TEXTURE0 + pr.units[k]); gl.bindTexture(gl.TEXTURE_2D, v); gl.uniform1i(e.loc, pr.units[k]); break;
+    }
+  }
+}
+function tex(w, h, { fmt = gl.RGBA16F, filter = gl.LINEAR, mips = false, wrap = gl.CLAMP_TO_EDGE } = {}) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  const lv = mips ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1;
+  gl.texStorage2D(gl.TEXTURE_2D, lv, fmt, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mips ? gl.LINEAR_MIPMAP_LINEAR : filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  return { t, w, h, mips };
+}
+function fbo(texs, depth) {
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  texs.forEach((T, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, T.t, 0));
+  gl.drawBuffers(texs.map((_, i) => gl.COLOR_ATTACHMENT0 + i));
+  if (depth) { const rb = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rb); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, texs[0].w, texs[0].h); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb); f.rb = rb; }
+  return { f, w: texs[0].w, h: texs[0].h, texs };
+}
+function target(F) { gl.bindFramebuffer(gl.FRAMEBUFFER, F ? F.f : null); gl.viewport(0, 0, F ? F.w : cv.width, F ? F.h : cv.height); }
+function mip(T) { gl.bindTexture(gl.TEXTURE_2D, T.t); gl.generateMipmap(gl.TEXTURE_2D); }
+const vao = gl.createVertexArray();
+function quad() { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+
+// ------------------------------------------------------------------ shaders --
+const COMMON = `
+uniform sampler2D uP; uniform int uN;
+float sdBox(vec2 d, vec2 h){ vec2 e = abs(d) - h; return length(max(e, 0.)) + min(max(e.x, e.y), 0.); }
+uvec3 pcg(uvec3 v){ v = v*1664525u + 1013904223u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; v ^= v >> 16u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; return v; }
+vec4 h4(vec2 c, float s){ uvec3 a = pcg(uvec3(uvec2(ivec2(c) + 32768), uint(s))), b = pcg(a ^ uvec3(0x9e3779b9u)); return vec4(a.xy, b.xy)/4294967295.; }
+`;
+
+// the street, sharp: what a drop sees. Two targets: without and with the lights.
+const FS_SCENE = HEAD + COMMON + `in vec2 vUv;
+layout(location = 0) out vec4 oEnv; layout(location = 1) out vec4 oFull;
+uniform vec4 uDom; uniform vec3 uHor, uZen, uGlowC; uniform float uGlow, uDawn, uTexel;
+float roof(float x){
+  float r = 2.4;
+  r = mix(r, .865, smoothstep(-.435, -.425, x)); r = mix(r, .745, smoothstep(-.315, -.305, x));
+  r = mix(r, .66, smoothstep(-.195, -.185, x));  r = mix(r, .695, smoothstep(-.065, -.055, x));
+  r = mix(r, 1.035, smoothstep(.075, .085, x));  r = mix(r, 1.34, smoothstep(.525, .535, x));
+  return r;
+}
+float ground(float x){ return .2 + .27*exp(-pow((x + .17)/.2, 2.)) + .06*smoothstep(-.3, -.55, x); }
+vec3 env(vec2 p){
+  float r = roof(p.x), g = ground(p.x);
+  vec3 sky = mix(uHor, uZen, smoothstep(.55, 1.7, p.y)) + uGlowC*uGlow*exp(-max(p.y - r, 0.)*4.)*(1. - .7*uDawn);
+  // facades take the sky's light at dawn; storeys and windows read faintly
+  float storey = .85 + .15*smoothstep(.35, .5, fract(p.y*5.6 + .3));
+  vec3 fac = (uHor*.24 + vec3(.0016, .0017, .002))*storey*(.8 + .25*smoothstep(.1, 1.3, p.y));
+  fac *= p.x < -.43 ? .7 : 1.;
+  // the wet road holds a little of the sky
+  vec3 road = uHor*(.12 + .2*smoothstep(-.8, .45, p.y)) + vec3(.0012, .0012, .0014);
+  float s = smoothstep(-uTexel, uTexel, p.y - r), q = smoothstep(-uTexel, uTexel, p.y - g);
+  return mix(road, mix(fac, sky, s), q);
+}
+void main(){
+  vec2 p = mix(uDom.xy, uDom.zw, vUv);
+  vec3 e = env(p), L = vec3(0);
+  for (int i = 0; i < uN; i++){
+    vec4 a = texelFetch(uP, ivec2(i*3, 0), 0), b = texelFetch(uP, ivec2(i*3 + 1, 0), 0), c = texelFetch(uP, ivec2(i*3 + 2, 0), 0);
+    vec2 d = p - a.xy;
+    if (abs(d.x) > a.z + .12 || abs(d.y) > a.w + .12) continue;
+    float sd = sdBox(d, a.zw) - b.y;
+    float core = b.w < .5 ? 1. - smoothstep(-uTexel, uTexel, sd) : 1. - smoothstep(-b.y, b.y, sd + b.y*.5);
+    float halo = exp(-max(sd, 0.)/(.004 + b.y)) *.05 + exp(-max(sd, 0.)/.03)*.006;   // rain in the air around a lamp
+    L += c.rgb*(core*c.a + halo*c.a*(b.w < .5 ? 1. : .2));
+  }
+  oEnv = vec4(e, 1); oFull = vec4(e + L, 1);
+}`;
+
+// the street as the glass sees it: far out of focus. Lights become discs.
+const FS_BOKEH = HEAD + COMMON + `in vec2 vUv; out vec4 o;
+uniform sampler2D uEnv; uniform vec4 uDom; uniform float uAspect, uHalfDiag, uLod;
+vec3 envBlur(vec2 p, float lod){
+  vec2 uv = (p - uDom.xy)/(uDom.zw - uDom.xy), t = exp2(lod)/vec2(textureSize(uEnv, 0));
+  return (textureLod(uEnv, uv, lod).rgb*2. + textureLod(uEnv, uv + vec2(t.x, t.y)*.7, lod).rgb + textureLod(uEnv, uv + vec2(-t.x, t.y)*.7, lod).rgb
+        + textureLod(uEnv, uv + vec2(t.x, -t.y)*.7, lod).rgb + textureLod(uEnv, uv - t*.7, lod).rgb)/6.;
+}
+void main(){
+  vec2 P = vec2((vUv.x - .5)*uAspect, vUv.y);
+  vec3 col = envBlur(P, uLod);
+  for (int i = 0; i < uN; i++){
+    vec4 a = texelFetch(uP, ivec2(i*3, 0), 0), b = texelFetch(uP, ivec2(i*3 + 1, 0), 0), c = texelFetch(uP, ivec2(i*3 + 2, 0), 0);
+    vec2 d = P - a.xy; float R = b.x;
+    if (abs(d.x) > a.z + R*1.6 || abs(d.y) > a.w + R*1.6) continue;
+    if (b.w < .5) {
+      // a lens disc: soft edge, a slight brighter rim, colour fringing, and the cat's eye
+      // of the lens barrel toward the corners
+      float cl = length(a.xy - vec2(0, .5));
+      vec2 dir = cl > 1e-4 ? (a.xy - vec2(0, .5))/cl : vec2(0);
+      vec2 off = dir*R*.62*smoothstep(.25, 1.05, cl/uHalfDiag);
+      float d1 = sdBox(d, a.zw), d2 = sdBox(d + off, a.zw);
+      float s = b.z;
+      vec3 rr = R*vec3(1.014, 1., .984);
+      vec3 m1 = 1. - smoothstep(rr*(1. - s), rr, vec3(d1));
+      float R2 = R*1.1, m2 = 1. - smoothstep(R2*(1. - s*1.3), R2, d2);
+      float rim = 1. + .13*smoothstep(.5*R, .96*R, d1) - .05*smoothstep(.0, .5*R, d1);
+      col += c.rgb*m1*m2*rim;
+    } else {
+      float sd = sdBox(d, a.zw);
+      float m = 1. - smoothstep(-R*.7, R*1.05, sd);
+      col += c.rgb*m*m*(3. - 2.*m);
+    }
+  }
+  o = vec4(col, 1);
+}`;
+
+// drops: each instance writes, per pixel, where in the drop it is (q), its
+// contact angle and size, and its coverage. The tallest cap wins where they touch.
+const VS_DROP = HEAD + `layout(location = 0) in vec4 aA; layout(location = 1) in vec4 aB;
+uniform float uAspect, uPxU; out vec2 vQ; flat out vec4 vA, vB;
+void main(){
+  vec2 k = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1))*2. - 1.;
+  vec2 ext = vec2(aA.z*1.3*(1. + aB.z*2.) + 2.*uPxU, aA.z*1.3*(1. + aB.z*2.)*aB.x + 2.*uPxU);
+  vQ = k*ext; vA = aA; vB = aB;
+  vec2 p = aA.xy + vQ;
+  gl_Position = vec4(p.x/uAspect*2., p.y*2. - 1., 0, 1);
+}`;
+const FS_DROP = HEAD + `in vec2 vQ; flat in vec4 vA, vB; uniform float uPxU; out vec4 o;
+void main(){
+  float r = vA.z; vec2 q = vQ/r;
+  q.y /= vB.x;                                  // running drops stretch along the fall
+  q.x *= 1. + vB.y*max(q.y, 0.);                // and thin to a tail above
+  float a = atan(q.y, q.x);
+  q /= 1. + vB.z*(.62*cos(2.*a + vB.w) + .38*cos(3.*a + 2.3*vB.w));   // pinned, never quite round
+  float rho = length(q), px = uPxU/r;
+  float cov = clamp((1. - rho)/(1.4*px) + .5, 0., 1.);
+  if (cov <= 0.) discard;
+  float h = sqrt(max(1. - rho*rho, 0.))*r;
+  gl_FragDepth = rho < 1. ? .9 - h*6. : .97;
+  o = vec4(q, vA.w + 4.*floor(r/uPxU), cov);
+}`;
+
+// mist: the time each spot of glass was last wiped
+const VS_SEG = HEAD + `layout(location = 0) in vec4 aS; layout(location = 1) in vec2 aT;
+uniform vec4 uG; out vec2 vP; flat out vec4 vS; flat out vec2 vT;
+void main(){
+  vec2 k = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
+  vec2 lo = min(aS.xy, aS.zw) - aT.x, hi = max(aS.xy, aS.zw) + aT.x;
+  vP = mix(lo, hi, k); vS = aS; vT = aT;
+  gl_Position = vec4((vP - uG.xy)/(uG.zw - uG.xy)*2. - 1., 0, 1);
+}`;
+const FS_SEG = HEAD + `in vec2 vP; flat in vec4 vS; flat in vec2 vT; out vec4 o;
+void main(){
+  vec2 pa = vP - vS.xy, ba = vS.zw - vS.xy;
+  float h = clamp(dot(pa, ba)/max(dot(ba, ba), 1e-12), 0., 1.), d = length(pa - ba*h)/vT.x;
+  if (d > 1.) discard;
+  o = vec4(vT.y - 9.*smoothstep(.45, 1., d), 0, 0, 1);
+}`;
+
+// the pane: the blurred street through mist, micro-droplets, and the drops as lenses
+const FS_COMP = HEAD + COMMON + `in vec2 vUv; out vec4 o;
+uniform sampler2D uBok, uSF, uD0, uD1, uW0, uW1;
+uniform vec4 uSDom, uGDom; uniform vec2 uDW, uUW, uRes; uniform float uAspect, uPxU, uMist, uFog, uTau, uDS, uExpo;
+vec2 sUV(vec2 p){ return (p - uSDom.xy)/(uSDom.zw - uSDom.xy); }
+float mistAt(sampler2D W, vec2 P, float u){
+  float tw = texture(W, (P - uGDom.xy)/(uGDom.zw - uGDom.xy)).r;
+  return 1. - exp(-max(u - tw, 0.)/uTau);
+}
+// where a ray through the drop at q lands in the street: inverted, minified, and
+// at the critical angle the surface reflects instead (the dark rim)
+vec3 lens(vec2 P, vec2 q, float th, float rpx, vec3 dim, float lodAdd){
+  float rho = min(length(q), .999); vec2 dir = q/max(length(q), 1e-5);
+  float sa = rho*sin(th), sb = min(1.333*sa, .99999);
+  float dev = asin(sb) - asin(sa), t = tan(dev);
+  vec2 sp = P - dir*uDS*t;
+  // footprint of one pixel in the street, for the mip level
+  float r2 = min(rho + 1./max(rpx, 1.), .999), sa2 = r2*sin(th), sb2 = min(1.333*sa2, .99999);
+  float t2 = tan(asin(sb2) - asin(sa2));
+  float fp = max(abs(t2 - t), t/max(rho, 1e-3)/max(rpx, 1.))*uDS;
+  float lod = log2(max(fp*float(textureSize(uSF, 0).y)/(uSDom.w - uSDom.y), 1.)) + lodAdd;
+  vec3 img = textureLod(uSF, sUV(sp), lod).rgb;
+  float cb = sqrt(max(1. - sb*sb, 0.)), F = .02 + .98*pow(1. - cb, 5.);
+  float tir = smoothstep(.985, 1.02, 1.333*sa);
+  return mix(img*(1. - F) + dim*F, dim, tir);
+}
+vec3 drops(vec3 col, sampler2D D, float w, vec2 P, vec3 veil){
+  if (w <= 0.) return col;
+  vec4 d = texelFetch(D, ivec2(gl_FragCoord.xy), 0);
+  if (d.w <= 0.) return col;
+  float th = fract(d.z/4.)*4., rpx = floor(d.z/4.);
+  float rho = length(d.xy);
+  vec3 c = lens(P, d.xy, th, rpx, veil*.07, 0.);
+  float edge = smoothstep(.86, .975, rho)*(1. - smoothstep(.975, 1.04, rho));
+  c += veil*edge*.35;                                     // a faint bright edge
+  return mix(col, c, d.w*w);
+}
+void micro(inout vec3 col, vec2 P, float m, float cell, float sd, mat2 rot, vec3 veil){
+  vec2 g = rot*P/cell; vec2 id = floor(g), f = g - id;
+  vec4 h = h4(id, sd);
+  float pres = smoothstep(h.w - .1, h.w + .1, m*1.12 - .06);
+  if (pres <= 0.) return;
+  float r = mix(.16, .43, h.z*h.z)*mix(.7, 1., pres);
+  vec2 c = .5 + (h.xy - .5)*(1. - 2.*r), q = (f - c)/r;
+  float rho = length(q), rpx = r*cell/uPxU;
+  float cv = clamp((1. - rho)*rpx/1.2 + .5, 0., 1.)*pres;
+  if (cv <= 0.) return;
+  vec3 c2 = lens(P, transpose(rot)*q, .78, rpx, veil*.3, 1.5);
+  col = mix(col, c2, cv*.55);
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy/uRes, P = vec2((uv.x - .5)*uAspect, uv.y);
+  vec3 bg = texture(uBok, uv).rgb, soft = textureLod(uBok, uv, 2.2).rgb, veil = textureLod(uBok, uv, 4.6).rgb;
+  float wsum = max(uDW.x + uDW.y, 1e-4);
+  float m = uMist*(mistAt(uW0, P, uUW.x)*uDW.x + mistAt(uW1, P, uUW.y)*uDW.y)/wsum;
+  // mist: the street softens behind it and its light glows in it
+  vec3 col = mix(bg, soft, .62*m)*(1. - .2*m) + veil*.42*m;
+  micro(col, P, m, .0062, 11., mat2(.94, .34, -.34, .94), veil);
+  micro(col, P, m, .0036, 23., mat2(.8, -.6, .6, .8), veil);
+  col = drops(col, uD0, uDW.x, P, veil);
+  col = drops(col, uD1, uDW.y, P, veil);
+  // the dawn mist: the whole pane goes to soft pale light
+  vec3 fog = textureLod(uBok, uv, 6.5).rgb*.9 + textureLod(uBok, vec2(.5), 20.).rgb*.35;
+  col = mix(col, fog, uFog);
+  o = vec4(col*uExpo, 1);
+}`;
+
+// bloom pyramid (13-tap); alpha carries the halation source
+const FS_DOWN = HEAD + `in vec2 vUv; out vec4 o; uniform sampler2D uSrc; uniform vec2 uTexel; uniform float uFirst, uThr;
+vec4 s(vec2 d){ return texture(uSrc, vUv + d*uTexel); }
+void main(){
+  vec4 r = s(vec2(0))*.125 + (s(vec2(-2,2)) + s(vec2(2,2)) + s(vec2(-2,-2)) + s(vec2(2,-2)))*.03125
+    + (s(vec2(0,2)) + s(vec2(-2,0)) + s(vec2(2,0)) + s(vec2(0,-2)))*.0625 + (s(vec2(-1,1)) + s(vec2(1,1)) + s(vec2(-1,-1)) + s(vec2(1,-1)))*.125;
+  if (uFirst > .5) { float l = dot(r.rgb, vec3(.3, .6, .1)); r.a = max(l - uThr, 0.)/(1. + max(l - uThr, 0.)*.15); }
+  o = r;
+}`;
+
+// film: halation, a negative's curve printed soft, grain that lives in the density, dither
+const FS_FINAL = HEAD + COMMON + `in vec2 vUv; out vec4 o;
+uniform sampler2D uScene, uB0, uB1, uB2, uB3, uB4, uB5; uniform float uCss, uSeed, uPush, uFade; uniform vec3 uToe, uSh, uFilt;
+vec4 cubic(float v){ vec4 n = vec4(1, 2, 3, 4) - v, s = n*n*n; float x = s.x, y = s.y - 4.*s.x, z = s.z - 4.*s.y + 6.*s.x; return vec4(x, y, z, 6. - x - y - z)/6.; }
+vec4 bicubic(sampler2D t, vec2 uv){
+  vec2 sz = vec2(textureSize(t, 0)); uv = uv*sz - .5; vec2 f = fract(uv); uv -= f;
+  vec4 xc = cubic(f.x), yc = cubic(f.y), c = uv.xxyy + vec2(-.5, 1.5).xyxy, s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
+  vec4 of = (c + vec4(xc.yw, yc.yw)/s)/sz.xxyy;
+  float sx = s.x/(s.x + s.y), sy = s.z/(s.z + s.w);
+  return mix(mix(texture(t, of.yw), texture(t, of.xw), sx), mix(texture(t, of.yz), texture(t, of.xz), sx), sy);
+}
+vec4 vn(vec2 p, float s){ vec2 i = floor(p), f = p - i; f = f*f*(3. - 2.*f);
+  return mix(mix(h4(i, s), h4(i + vec2(1, 0), s), f.x), mix(h4(i + vec2(0, 1), s), h4(i + 1., s), f.x), f.y) - .5; }
+vec4 grain(vec2 p, float s){ return (vn(p, s) + vn(mat2(.866, .5, -.5, .866)*p + vec2(.5, .25), s + 1.))*2.45; }
+void main(){
+  vec3 sc = texture(uScene, vUv).rgb;
+  vec4 b0 = texture(uB0, vUv), b1 = bicubic(uB1, vUv), b2 = bicubic(uB2, vUv), b3 = bicubic(uB3, vUv), b4 = bicubic(uB4, vUv), b5 = bicubic(uB5, vUv);
+  vec3 soft = mix(sc, b0.rgb, .22);
+  vec3 glow = b1.rgb*.26 + b2.rgb*.26 + b3.rgb*.22 + b4.rgb*.15 + b5.rgb*.11;
+  float hal = b1.a*.2 + b2.a*.34 + b3.a*.3 + b4.a*.16;
+  vec3 x = soft*.86 + glow*.14 + hal*vec3(1., .28, .12)*.55;
+  vec3 le = log2(max(x, vec3(1e-7))/.18);
+  float ll = dot(le, vec3(.28, .6, .12));
+  le = mix(le, vec3(ll), uFade) + uFilt;                                  // faded, then filtered
+  vec2 gp = gl_FragCoord.xy/uCss;
+  float coarse = smoothstep(2.2, -1.6, ll);
+  float wc = coarse*(1. - .3*min(uPush, 1.)), wp = .3*min(uPush, 1.)*coarse + .12*coarse, wf = max(1. - wc - wp, 0.);
+  vec4 gg = (grain(gp/.8, uSeed*3.)*wf + grain(gp/1.45 + 17.3, uSeed*3. + 1.)*wc + grain(gp/2.3 + 41.9, uSeed*3. + 2.)*wp)/sqrt(wf*wf + wc*wc + wp*wp);
+  vec3 g = gg.x*.85 + gg.yzw*vec3(.42, .4, .48);
+  le += g*mix(.06, .12, coarse)*(1. + .3*uPush);
+  const vec3 k = vec3(.8, .78, .75), off = vec3(.32, .3, .36);
+  vec3 y = uToe + (uSh - uToe)/(1. + exp(-k*(le - off)*1.12));
+  vec4 hd = h4(gl_FragCoord.xy, uSeed + 5000.);
+  o = vec4(y + (hd.x + hd.y - 1.)/255., 1);
+}`;
+
+const P_SCENE = program(FS_SCENE), P_BOKEH = program(FS_BOKEH), P_DROP = program(FS_DROP, VS_DROP), P_SEG = program(FS_SEG, VS_SEG);
+const P_COMP = program(FS_COMP), P_DOWN = program(FS_DOWN), P_FINAL = program(FS_FINAL);
+
+// ----------------------------------------------------------------- targets --
+const SD = [-2.0, -0.9, 2.0, 1.9];                     // the sharp street, wider than the view: drops see wide
+const S_ENV = tex(1024, 720, { mips: true }), S_FULL = tex(1024, 720, { mips: true }), F_S = fbo([S_ENV, S_FULL]);
+const PTEX = tex(MAXP * 3, 1, { fmt: gl.RGBA32F, filter: gl.NEAREST });
+const WIPE = [0, 1].map(() => { const T = tex(1072, 488, { fmt: gl.R16F }); return { T, F: fbo([T]) }; });
+let W = 0, H = 0, css = 1, BW = 0, BH = 0, BOK, F_BOK, DROP = [], COMP, F_COMP, B = [];
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(7e6 / Math.max(innerWidth * innerHeight, 1)));
+  const w = Math.max(2, Math.round(innerWidth * dpr)), h = Math.max(2, Math.round(innerHeight * dpr));
+  if (w === W && h === H) return false;
+  W = w; H = h; cv.width = W; cv.height = H; css = dpr;
+  const s = Math.min(0.5, 1100 / W); BW = Math.round(W * s); BH = Math.round(H * s);
+  BOK = tex(BW, BH, { mips: true }); F_BOK = fbo([BOK]);
+  DROP = [0, 1].map(() => { const T = tex(W, H, { fmt: gl.RGBA32F, filter: gl.NEAREST }); return { T, F: fbo([T], true) }; });
+  COMP = tex(W, H); F_COMP = fbo([COMP]);
+  B = []; let bw = W, bh = H;
+  for (let i = 0; i < 6; i++) { bw = Math.max(1, bw >> 1); bh = Math.max(1, bh >> 1); const T = tex(bw, bh); B.push({ T, F: fbo([T]) }); }
+  for (const g of sims.values()) g.dirty = true;
+  return true;
+}
+
+// instanced geometry
+const dropBuf = gl.createBuffer(), dropVao = gl.createVertexArray();
+gl.bindVertexArray(dropVao); gl.bindBuffer(gl.ARRAY_BUFFER, dropBuf);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(0, 1);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(1, 1);
+const segBuf = gl.createBuffer(), segVao = gl.createVertexArray();
+gl.bindVertexArray(segVao); gl.bindBuffer(gl.ARRAY_BUFFER, segBuf);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 24, 0); gl.vertexAttribDivisor(0, 1);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 24, 16); gl.vertexAttribDivisor(1, 1);
+gl.bindVertexArray(null);
+let dropData = new Float32Array(8 * 8192);
+
+// ---------------------------------------------------------------- timeline --
+const sims = new Map();
+function sim(k) { if (!sims.has(k)) sims.set(k, new Glass(k)); return sims.get(k); }
+// which nights are on screen at loop time t, and how much
+function timeline(t) {
+  t = ((t % LOOP) + LOOP) % LOOP;
+  const k = Math.floor(t / NIGHT), u = t - k * NIGHT;
+  const L = [{ k, u, w: 1 }];
+  if (u > NIGHT - XW) { const w = sstep(-XW, XW, u - NIGHT); L[0].w = 1 - w; L.push({ k: (k + 1) % NN, u: u - NIGHT, w }); }
+  else if (u < XW) { const w = sstep(-XW, XW, u); L[0].w = w; L.unshift({ k: (k + NN - 1) % NN, u: u + NIGHT, w: 1 - w }); }
+  return { L, t, k, u, edge: Math.min(u, NIGHT - u), into: u > NIGHT / 2 ? 1 : 0 };
+}
+// mist on the glass: a breath over the night, thick at the turn of the nights
+function fogAt(edge, into) { return 0.95 * Math.pow(1 - sstep(0, into ? 13 : 14, edge), 1.25); }
+// exposure: a patient photographer, following the light down only in part, and slowly
+// each night keeps its own photographer; across the mist their exposures blend
+const targetEV = (N, u) => -0.82 * Math.log2(meter(N, u)) + 0.75 * skyState(N, u).d;
+function nightEV(N, u) { let s = 0, w = 0; for (let i = 0; i < 16; i++) { const k = Math.exp(-i / 6); s += k * targetEV(N, u - i * 0.75); w += k; } return s / w; }
+const exposure = T => T.L.reduce((a, e) => a + e.w * nightEV(NIGHTS[e.k], e.u), 0);
+const EV_REF = nightEV(NIGHTS[0], 20);
+function caption(N, u) { const m = Math.floor(mix(N.clock[0], N.clock[1], clamp(u / NIGHT, 0, 1))); return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); }
+
+// -------------------------------------------------------------------- draw --
+function drawDrops(g, slot, u) {
+  const A = W / H, pxU = 1 / H;
+  let n = 0;
+  if (dropData.length < g.D.length * 8) dropData = new Float32Array(g.D.length * 16);
+  for (const d of g.D) {
+    if (!d.alive || Math.abs(d.x) > A / 2 + 0.05 || d.y < -0.06 || d.y > 1.06) continue;
+    const grow = d.born > -1e8 ? sstep(0, 0.12, u - d.born) : 1;
+    const r = d.r * (0.55 + 0.45 * grow);
+    const sp = d.s ? clamp(d.vy / 0.12, 0, 1) : 0;
+    const o = n * 8;
+    dropData[o] = d.x; dropData[o + 1] = d.y; dropData[o + 2] = r; dropData[o + 3] = d.th - (d.s ? 0.05 : 0);
+    dropData[o + 4] = 1 + 0.38 * sp + (d.s ? 0.12 : 0); dropData[o + 5] = d.s ? 0.3 + 0.25 * sp : 0; dropData[o + 6] = d.s ? 0.015 : d.wob; dropData[o + 7] = d.ph;
+    n++;
+  }
+  const D = DROP[slot];
+  target(D.F); gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+  use(P_DROP, { uAspect: A, uPxU: pxU });
+  gl.bindVertexArray(dropVao); gl.bindBuffer(gl.ARRAY_BUFFER, dropBuf); gl.bufferData(gl.ARRAY_BUFFER, dropData.subarray(0, n * 8), gl.STREAM_DRAW);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+  gl.disable(gl.DEPTH_TEST); gl.bindVertexArray(null);
+}
+function drawWipe(g, slot) {
+  const Wp = WIPE[slot];
+  target(Wp.F);
+  if (g.dirty || g.wslot !== slot) { gl.clearColor(-1000, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); g.drawn = 0; g.dirty = false; g.wslot = slot; }
+  const s = g.segs, n = (s.length - g.drawn) / 6;
+  if (n > 0) {
+    gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); gl.blendFunc(gl.ONE, gl.ONE);
+    use(P_SEG, { uG: GD });
+    gl.bindVertexArray(segVao); gl.bindBuffer(gl.ARRAY_BUFFER, segBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(s.slice(g.drawn)), gl.STREAM_DRAW);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+    gl.bindVertexArray(null); gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD);
+    g.drawn = s.length;
+  }
+  if (g.drawn > 120000) { g.segs = g.segs.slice(g.drawn - 60000); g.drawn = g.segs.length; }
+}
+
+const PRINT = { toe: [0.072, 0.083, 0.088], sh: [0.958, 0.934, 0.874], filt: [0.02, 0, -0.03] };
+function render(t) {
+  const T = timeline(t);
+  // the street
+  PN = 0;
+  let hor = [0, 0, 0], zen = [0, 0, 0], glow = 0, dawn = 0;
+  for (const e of T.L) {
+    // the new night's lamps are far brighter than the dawn they replace: let them in late
+    const w = T.L.length > 1 && e.u < NIGHT / 2 ? Math.pow(e.w, 2.5) : T.L.length > 1 ? 1 - Math.pow(1 - e.w, 2.5) : 1;
+    const N = NIGHTS[e.k]; pushNight(N, e.u, w);
+    const s = skyState(N, e.u);
+    hor = hor.map((v, i) => v + s.hor[i] * w); zen = zen.map((v, i) => v + s.zen[i] * w); glow += s.glow * w; dawn += s.d * w;
+  }
+  gl.bindTexture(gl.TEXTURE_2D, PTEX.t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MAXP * 3, 1, gl.RGBA, gl.FLOAT, PD);
+  target(F_S);
+  use(P_SCENE, { uP: PTEX.t, uN: PN, uDom: SD, uHor: hor, uZen: zen, uGlowC: [0.011, 0.0068, 0.0042], uGlow: glow, uDawn: dawn, uTexel: (SD[3] - SD[1]) / S_ENV.h });
+  quad(); mip(S_ENV); mip(S_FULL);
+  const A = W / H;
+  target(F_BOK);
+  use(P_BOKEH, { uP: PTEX.t, uN: PN, uEnv: S_ENV.t, uDom: SD, uAspect: A, uHalfDiag: Math.hypot(A / 2, 0.5), uLod: 4.2 });
+  quad(); mip(BOK);
+  // the glass
+  const live = new Set();
+  const dw = [0, 0], uw = [0, 0];
+  for (const e of T.L) {
+    const g = sim(e.k), slot = e.k % 2; live.add(e.k);
+    g.advance(e.u); drawDrops(g, slot, e.u); drawWipe(g, slot);
+    dw[slot] = e.w; uw[slot] = e.u;
+  }
+  // the next night's glass is already out in the rain, a step a frame
+  if (T.u > NIGHT + U0) { const k2 = (T.k + 1) % NN; sim(k2).advance(T.u - NIGHT, 4); live.add(k2); }
+  for (const k of [...sims.keys()]) if (!live.has(k)) sims.delete(k);
+  const ev = exposure(T), expo = Math.pow(2, ev) * 0.42;
+  const fog = fogAt(T.edge, T.into);
+  const mistB = T.L.reduce((a, e) => a + e.w * NIGHTS[e.k].mist, 0);
+  target(F_COMP);
+  use(P_COMP, { uBok: BOK.t, uSF: S_FULL.t, uD0: DROP[0].T.t, uD1: DROP[1].T.t, uW0: WIPE[0].T.t, uW1: WIPE[1].T.t,
+    uSDom: SD, uGDom: GD, uDW: dw, uUW: uw, uRes: [W, H], uAspect: A, uPxU: 1 / H, uMist: Math.min(1, mistB + 0.5 * fog), uFog: fog * 0.85,
+    uTau: 22, uDS: 1.37, uExpo: expo });
+  quad();
+  let src = COMP;
+  B.forEach((b, i) => { target(b.F); use(P_DOWN, { uSrc: src.t, uTexel: [1 / src.w, 1 / src.h], uFirst: i === 0 ? 1 : 0, uThr: 0.9 }); quad(); src = b.T; });
+  target(null);
+  const push = Math.max(0, ev - EV_REF);
+  use(P_FINAL, { uScene: COMP.t, uB0: B[0].T.t, uB1: B[1].T.t, uB2: B[2].T.t, uB3: B[3].T.t, uB4: B[4].T.t, uB5: B[5].T.t,
+    uToe: PRINT.toe, uSh: PRINT.sh, uFilt: mix3(PRINT.filt, [-0.05, 0, 0.07], dawn), uFade: mix(0.24, 0.12, dawn), uCss: css, uSeed: Math.floor(T.t * FPS) % 997, uPush: Math.min(push / 3, 1.4) });
+  quad();
+  // the note on the print: the time, fading out into the mist and back
+  const main = T.L.reduce((a, e) => (e.w > a.w ? e : a));
+  const txt = caption(NIGHTS[main.k], main.u);
+  if (note.textContent !== txt) note.textContent = txt;
+  note.style.opacity = (0.56 * (1 - sstep(0.15, 0.6, fog))).toFixed(3);
+}
+
+// --------------------------------------------------------------------- run --
+let frozen = null, dirty = true;
+function readHash() { const m = /t=([-\d.]+)/.exec(location.hash); frozen = m ? +m[1] : null; dirty = true; }
+readHash(); addEventListener('hashchange', readHash); addEventListener('resize', () => { dirty = true; });
+// live playback opens just after the crossover, as the first night clears out of the mist (one sim to warm, not two)
+const t0 = performance.now() - 8000;
+window.__rog = { frames: 0, t: null };
+function loop() {
+  const rs = resize(), t = frozen !== null ? frozen : Math.floor((performance.now() - t0) / 1000 * FPS) / FPS;
+  if (t !== window.__rog.t || dirty || rs) { render(t); dirty = false; window.__rog.frames++; window.__rog.t = t; }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
