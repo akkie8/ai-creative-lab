@@ -8,7 +8,7 @@ AI × Web で、何ができるかを実験する。
 
 [**Gallery**](https://akkie8.github.io/ai-creative-lab/) · [Zenn](https://zenn.dev/aki1990) · [X](https://x.com/akiy_8)
 
-[![Rain on Glass](assets/rain-on-glass.png)](https://akkie8.github.io/ai-creative-lab/works/rain-on-glass/)
+[![Patina](assets/patina.png)](https://akkie8.github.io/ai-creative-lab/works/patina/)
 
 </div>
 
@@ -18,29 +18,30 @@ AI Creative Lab は、モデルでつくり、ブラウザで動かし、その�
 
 <table>
 <tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/patina/"><img src="assets/patina.png" alt="Patina"></a><br><b>Patina</b><br><sub>Claude Opus 5.5 · 2026-10-03 · Generative art / WebGL2</sub></td>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/rain-on-glass/"><img src="assets/rain-on-glass.png" alt="Rain on Glass"></a><br><b>Rain on Glass</b><br><sub>Claude Opus 5.5 · 2026-10-01 · Generative art / WebGL2</sub></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/dusk/"><img src="assets/dusk.png" alt="Dusk"></a><br><b>Dusk</b><br><sub>Claude Opus 5.5 · 2026-10-01 · Generative art / WebGL2</sub></td>
-</tr>
-<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/"><img src="assets/carrow-lensing.png" alt="Carrow Lensing"></a><br><b>Carrow Lensing</b><br><sub>Claude Opus 5.5 · 2026-09-30 · Generative art / WebGL2</sub></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/misregistered/"><img src="assets/misregistered.png" alt="MISREGISTERED"></a><br><b>MISREGISTERED</b><br><sub>Claude Opus 5.5 · 2026-09-25 · Motion graphics / WebGL2</sub></td>
-</tr>
-<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/vermilion-well/"><img src="assets/vermilion-well.png" alt="Vermilion Well"></a><br><b>Vermilion Well</b><br><sub>Claude Opus 5.5 · 2026-09-25 · Motion graphics / WebGL2</sub></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-botanical-laboratory/"><img src="assets/moonlit-botanical-laboratory.png" alt="Moonlit Botanical Laboratory"></a><br><b>Moonlit Botanical Laboratory</b><br><sub>Claude Opus 5.5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
-</tr>
-<tr>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/moonlit-herbarium/"><img src="assets/moonlit-herbarium.png" alt="The Moonlit Herbarium"></a><br><b>The Moonlit Herbarium</b><br><sub>Claude Opus 5 · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
-<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/"><img src="assets/nocturnal-conservatory.png" alt="The Nocturnal Conservatory"></a><br><b>The Nocturnal Conservatory</b><br><sub>GPT-6 Astra · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
 </tr>
 <tr>
+<td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/nocturnal-conservatory/"><img src="assets/nocturnal-conservatory.png" alt="The Nocturnal Conservatory"></a><br><b>The Nocturnal Conservatory</b><br><sub>GPT-6 Astra · 2026-09-24 · Pixel animation / Canvas 2D</sub></td>
 <td width="50%" valign="top"><a href="https://akkie8.github.io/ai-creative-lab/works/coral-reef-day/"><img src="assets/coral-reef.png" alt="サンゴ礁の一日"></a><br><b>サンゴ礁の一日 / Coral Reef Day</b><br><sub>Claude Opus 5.5 · 2026-09-23 · Pixel animation / Canvas 2D</sub></td>
-<td width="50%" valign="top"></td>
 </tr>
 </table>
 
 | 作品名 | モデル | 作成日 | 技法 | シリーズ |
 | --- | --- | --- | --- | --- |
+| [Patina](https://akkie8.github.io/ai-creative-lab/works/patina/) | Claude Opus 5.5（Claude Code） | 2026-10-03 | Generative art / WebGL2 / Growth simulation / Film look / Single HTML | — |
 | [Rain on Glass](https://akkie8.github.io/ai-creative-lab/works/rain-on-glass/) | Claude Opus 5.5（Claude Code） | 2026-10-01 | Generative art / WebGL2 / Optics / Film look / Single HTML | — |
 | [Dusk](https://akkie8.github.io/ai-creative-lab/works/dusk/) | Claude Opus 5.5（Claude Code） | 2026-10-01 | Generative art / WebGL2 / Atmospheric scattering / Film look / Single HTML | — |
 | [Carrow Lensing](https://akkie8.github.io/ai-creative-lab/works/carrow-lensing/) | Claude Opus 5.5（Claude Code） | 2026-09-30 | Generative art / WebGL2 / Ray tracing / Invented physics / Single HTML | — |
@@ -57,7 +58,16 @@ AI Creative Lab は、モデルでつくり、ブラウザで動かし、その�
 | --- | --- | --- | --- |
 | モデルで作る | Labに実物を公開 | Zennに作り方と違いを書く | Xに動画を出す |
 
-**Fields** — **Pixel Art** (4) · **Motion** (2) · **Generative Art** (3) · 3D · Voice · Realtime UI · Agent UI · Character · Interactive Web · Visualization
+**Fields** — **Pixel Art** (4) · **Motion** (2) · **Generative Art** (4) · 3D · Voice · Realtime UI · Agent UI · Character · Interactive Web · Visualization
+
+## Patina
+
+開くたびに数十年分の雨と露を計算して、新しい緑青の金属板を1枚育てる作品。まだらの緑青の上を錆の粒の帯が天の川のように横切り、大きな粒は黒茶の芯を持つ厚い殻になって、まわりの緑青に錆のしみをにじませます。仕上げはカラーネガのプリントで、白い紙から約11秒かけて現像されるように現れ、そのあとは粒子だけが動きます。金属・緑青の色・年数・明るさ・帯が種ごとに変わり、`#seed=` で同じ板が出ます。HTML 1ファイル（605行・39,767 bytes）で、結晶の粒の中を進む成長をWebGL2で計算しています。
+
+- [作品を開く](experiments/patina/opus-5-5/index.html) · [制作記録](https://akkie8.github.io/ai-creative-lab/works/patina/) · [プロンプト](experiments/patina/prompt.md) · [作品のREADME](experiments/patina/README.md) · [48の種](experiments/patina/seeds.jpg)
+- 作成日：2026-10-03。Claude Code（Opus 5.5）にプロンプトを1回送りました。プロンプトは2段階で、人が手を入れたのは Phase 1 の静止画に「もっと大胆で生々しい錆にできる？」、その静止画に「Phase 2 に進んで」と返した2回だけです。作品のコードへの人の修正はありません。
+- 生成時間 53分29秒（Phase 1 21分8秒 + 大胆な錆へ 15分39秒 + Phase 2 16分42秒。人の返信を待った時間は除く）/ モデル呼び出し 185回 / Input 30,267,700（うちキャッシュ読出し 29,616,633）/ Output 201,534 / Total 30,469,234 tokens。作品を作ったセッションのログから区間ごとに集計した値で、コンテキスト上限による自動要約を2回含みます。コストは記録していません。
+- 48の種を描いて全部見て（壁に飾れるのは44枚と判断、失格なし）、1:1で縞を、8つのコマで現像の途中を確かめています。計算時間は Apple M3 のヘッドレスChromium（Metal）で計測しています。
 
 ## Rain on Glass
 
@@ -174,16 +184,18 @@ Magical Botanical Laboratoryを追試する場合は、新しいセッション�
 1. 既存の `works/<slug>/index.html` を複製し、作品・モデル・作成日・技法・条件・計測値・プロンプト・関連リンクを更新します。共通CSSは `assets/site.css` を使います。
 2. トップのIndexにカードを1つ追加します。HTML作品は `.media` 内に iframe でそのまま埋め込み、画像や動画の作品は `<img>` / `<video>` を置きます。必要に応じてFeaturedも更新します。
 3. 作品HTMLをそのまま収録し、`shasum -a 256 <作品HTML>` の出力を `checksums.sha256` に追記します。READMEの作品一覧も更新します。
-4. ローカルサーバーで相対リンクと表示を確認し、`shasum -a 256 -c checksums.sha256` を実行します。
+4. 静止画は最小限にします。入れるのは、Phase 1 の比較シートと、納品版を1枚にまとめたコンタクトシート（またはループのコマのシート）だけで、合計1 MB 前後に収めます。途中の版の静止画、1種ずつの画像、1:1 の切り抜き、確認用のコマは `.local/` に残し、コミットしません。
+5. ローカルサーバーで相対リンクと表示を確認し、`shasum -a 256 -c checksums.sha256` を実行します。
 
 ## 構成
 
 ```text
 index.html                              # Featured / Index / Fields / About
 assets/
-  site.css                              # 10ページ共通CSS
+  site.css                              # 11ページ共通CSS
   pixel-fit.js                          # サンゴ礁の整数倍表示
   copy.js                               # プロンプトのコピー
+  patina.png
   rain-on-glass.png
   dusk.png
   carrow-lensing.png
@@ -195,6 +207,7 @@ assets/
   nocturnal-conservatory.png
   *.jpg                                 # 既存の比較素材・OGP
 works/
+  patina/index.html
   rain-on-glass/index.html
   dusk/index.html
   carrow-lensing/index.html
@@ -207,7 +220,13 @@ works/
 prompt.md                               # 植物研究室の共通プロンプト全文
 metrics.md                              # 植物研究室の計測記録・換算前提
 README.md
-checksums.sha256                        # 9作品のSHA-256
+checksums.sha256                        # 10作品のSHA-256
+experiments/patina/
+  README.md
+  prompt.md
+  opus-5-5/index.html                    # 作品原本
+  seeds.jpg                             # 納品版48の種のコンタクトシート
+  phase1/approaches-contact-sheet.jpg   # Phase 1 のつくり方の比較
 experiments/rain-on-glass/
   README.md
   prompt.md
@@ -249,7 +268,7 @@ experiments/magical-botanical-laboratory/
 
 ## 原本とプレビュー
 
-`checksums.sha256` は植物研究室の元の添付HTML、サンゴ礁・Vermilion Well・MISREGISTERED・Carrow Lensing・Dusk・Rain on Glassの収録HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
+`checksums.sha256` は植物研究室の元の添付HTML、サンゴ礁・Vermilion Well・MISREGISTERED・Carrow Lensing・Dusk・Rain on Glass・Patinaの収録HTMLから作成しています。リポジトリのルートで `shasum -a 256 -c checksums.sha256` を実行すると一致を確認できます。
 
 既存の植物研究室のJPEG画像は別途作成した比較素材です。各作品の表示領域は640×480 CSS px、表示倍率100%、devicePixelRatio 1、reduced-motionはno-preference。Chromiumの共通仮想時計で64msのウォームアップ後、12秒時点を撮影したものです。単体画像にはモデル名と生成時間のラベルを加えています。乱数は固定していないため、再読込時のイベントは一致しない場合があります。画像のラベルやギャラリーの装飾は作品本体には含まれません。
 
