@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patina</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#cdcbc3}
+canvas{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#note{position:fixed;right:28px;bottom:22px;margin:0;font:italic 400 12px/1 Georgia,"Times New Roman",serif;letter-spacing:.06em;color:#efe9dc;opacity:0;transition:opacity 4s ease;white-space:pre;pointer-events:none;user-select:none;-webkit-font-smoothing:antialiased;text-shadow:0 0 6px rgba(20,30,28,.25)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p id="note"></p>
+<script>
+'use strict';
+// ============================================================================
+// Patina — one weathered copper plate, seen straight on, printed on film.
+// Every load grows a new plate: decades of rain and dew are simulated on the
+// GPU, iron grains land in a drifting band and rust where they lie, and the
+// result is photographed under an overcast sky and printed. #seed=123 repeats.
+// ============================================================================
+
+const Q = new URLSearchParams(location.hash.slice(1));
+const SEED = Q.has('seed') ? (parseInt(Q.get('seed'), 10) >>> 0) : 1 + Math.floor(Math.random() * 99999);
+const FAST = Q.has('fast');
+
+function sfc32(a, b, c, d) { return function () { a |= 0; b |= 0; c |= 0; d |= 0; const t = (a + b | 0) + d | 0; d = d + 1 | 0; a = b ^ b >>> 9; b = c + (c << 3) | 0; c = c << 21 | c >>> 11; c = c + t | 0; return (t >>> 0) / 4294967296; }; }
+const mix32 = (x) => { x = Math.imul(x ^ x >>> 16, 0x7feb352d); x = Math.imul(x ^ x >>> 15, 0x846ca68b); return (x ^ x >>> 16) >>> 0; };
+const R = sfc32(mix32(SEED ^ 0x9E3779B9), mix32(SEED + 0x632BE5AB), mix32(SEED * 3 + 0x85EBCA6B), mix32(SEED ^ 0xC2B2AE35)); for (let i = 0; i < 24; i++) R();
+const rr = (a, b) => a + (b - a) * R();
+const gauss = () => { let u = 0, v = 0; while (u === 0) u = R(); v = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185307 * v); };
+const pick = (a) => a[Math.floor(R() * a.length)];
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const mix = (a, b, t) => a + (b - a) * t;
+const lin = (c) => c.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+const mix3 = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const jit = (c, s) => c.map((v) => v * (1 + s * (R() * 2 - 1)));
+
+// ------------------------------------------------------------------ the plate --
+const METALS = [
+  { name: 'copper', w: 5, under: [92, 58, 48], pats: ['teal', 'teal', 'blue-green', 'jade', 'grey-green'] },
+  { name: 'bronze', w: 3, under: [74, 56, 44], pats: ['jade', 'bottle', 'teal', 'grey-green'] },
+  { name: 'brass', w: 1, under: [96, 80, 52], pats: ['grey-green', 'teal'] },
+];
+const PATINA = { //   light crust,       deep crust,        chalk
+  'teal':       [[96, 142, 134], [58, 108, 103], [150, 180, 170]],
+  'blue-green': [[90, 142, 134], [54, 104, 100], [146, 182, 172]],
+  'jade':       [[96, 142, 128], [56, 108, 96], [150, 182, 168]],
+  'grey-green': [[98, 134, 124], [62, 100, 90], [150, 174, 164]],
+  'bottle':     [[70, 112, 98], [38, 74, 66], [128, 156, 146]],
+};
+function choose() {
+  let t = R() * 9, m = METALS[0]; for (const M of METALS) { if ((t -= M.w) < 0) { m = M; break; } }
+  const pk = pick(m.pats), P = PATINA[pk];
+  const years = Math.round(rr(38, 140));
+  const age = clamp((years - 30) / 110, 0, 1);
+  const toneMode = pick(['even', 'even', 'down', 'down', 'down', 'side', 'pale', 'pale']);
+  const toneDir = toneMode === 'side' ? (R() < 0.5 ? [1, 0] : [-1, 0]) : toneMode === 'down' ? [rr(-0.25, 0.25), -1] : [0, -1];
+  const bandMode = pick(['one', 'one', 'one', 'one', 'two', 'two', 'sparse']);
+  return {
+    metal: m.name, patina: pk, years, age, toneMode,
+    patA: lin(jit(P[0], 0.04)), patB: lin(jit(P[1], 0.05)), chalk: lin(P[2]), under: lin(jit(m.under, 0.06)),
+    orange: lin(jit([212, 108, 32], 0.05)), gold: lin(jit([198, 152, 66], 0.05)), ybrown: lin([156, 94, 38]), oxide: lin([54, 36, 28]), red: lin(jit([128, 54, 28], 0.06)),
+    aqua: lin(jit([142, 190, 178], 0.04)), white: lin([206, 216, 206]),
+    toneDir, toneAmt: toneMode === 'even' ? rr(0, 0.12) : toneMode === 'pale' ? rr(0, 0.1) : rr(0.3, 0.5),
+    key: toneMode === 'pale' ? rr(0.19, 0.24) : toneMode === 'down' ? rr(0.11, 0.15) : rr(0.12, 0.17),
+    bandMode, runs: pick([0, 0, 0.3, 0.6, 1]) * rr(0.6, 1), runLen: rr(30, 110), bold: rr(0.6, 1), goldBias: rr(0.3, 0.65), aquaFrac: rr(0.06, 0.16), whiteFrac: rr(0.01, 0.035),
+    runFrac: R() < 0.5 ? rr(0.0, 0.08) : rr(0.12, 0.3),
+    illum: [rr(-0.06, 0.06), rr(-0.06, 0.06), rr(-0.05, 0.02)],
+  };
+}
+const S = choose();
+
+// ------------------------------------------------------------------ GL --
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: !!window.__keep, powerPreference: 'high-performance' });
+if (!gl || !gl.getExtension('EXT_color_buffer_float')) { document.body.style.background = '#6f8a83'; throw new Error('WebGL2 float targets unavailable'); }
+
+const DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+let W = Math.round(innerWidth * DPR), H = Math.round(innerHeight * DPR);
+{ const cap = 8.3e6, s = Math.min(1, Math.sqrt(cap / (W * H))); W = Math.round(W * s); H = Math.round(H * s); }
+cv.width = W; cv.height = H;
+const PPU = Math.sqrt(W * H / (1600 * 1000)) * (Q.has('ppu') ? +Q.get('ppu') : 1); // pixels per plate unit; a 1600x1000 frame is 1 px/unit
+const WU = W / PPU, HU = H / PPU;
+
+const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const COMMON = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+uniform vec2 uRes; uniform float uPPU; uniform uint uSeed;
+uvec3 pcg3(uvec3 v){ v = v * 1664525u + 1013904223u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; v ^= v >> 16u; v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y; return v; }
+vec3 hash3(uvec3 v){ return vec3(pcg3(v)) * 2.3283064e-10; }
+vec3 hc(ivec2 c, uint s){ return hash3(uvec3(uint(c.x + 1048576), uint(c.y + 1048576), s)); }
+float vn(vec2 x, uint s){ vec2 i = floor(x), f = x - i; vec2 u = f*f*(3.0 - 2.0*f); ivec2 I = ivec2(i);
+  float a = hc(I, s).x, b = hc(I + ivec2(1,0), s).x, c = hc(I + ivec2(0,1), s).x, d = hc(I + ivec2(1,1), s).x;
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y); }
+vec2 plate(){ return gl_FragCoord.xy / uPPU; }
+ivec2 PX(){ return ivec2(gl_FragCoord.xy); }
+`;
+
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const l = gl.getShaderInfoLog(s); console.log(src.split('\n').map((x, i) => (i + 1) + ': ' + x).join('\n')); throw new Error(l); } return s; }
+function prog(fs, vs = VS) {
+  const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, COMMON + fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name.replace('[0]', '')] = { loc: gl.getUniformLocation(p, a.name), type: a.type, size: a.size }; }
+  return { p, u };
+}
+function tex(w, h, fmt = gl.RGBA16F, levels = 1, filt = gl.NEAREST) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, levels, fmt, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, levels > 1 ? gl.LINEAR_MIPMAP_LINEAR : filt);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filt);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  t.w = w; t.h = h; return t;
+}
+const fbos = new Map();
+function fbo(ts) {
+  const k = ts.map((t) => t.id || (t.id = Math.random())).join(); if (fbos.has(k)) return fbos.get(k);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  ts.forEach((t, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t, 0));
+  gl.drawBuffers(ts.map((_, i) => gl.COLOR_ATTACHMENT0 + i)); fbos.set(k, f); return f;
+}
+function uniforms(P, U) {
+  let unit = 0;
+  const all = Object.assign({ uRes: [W, H], uPPU: PPU, uSeed: SEED * 2654435761 >>> 0 }, U);
+  for (const k in all) {
+    const e = P.u[k]; if (!e) continue; const v = all[k];
+    if (v instanceof WebGLTexture) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, v); gl.uniform1i(e.loc, unit++); continue; }
+    switch (e.type) {
+      case gl.FLOAT: e.size > 1 ? gl.uniform1fv(e.loc, v) : gl.uniform1f(e.loc, v); break;
+      case gl.FLOAT_VEC2: gl.uniform2fv(e.loc, v); break; case gl.FLOAT_VEC3: gl.uniform3fv(e.loc, v); break; case gl.FLOAT_VEC4: gl.uniform4fv(e.loc, v); break;
+      case gl.INT: gl.uniform1i(e.loc, v); break; case gl.UNSIGNED_INT: gl.uniform1ui(e.loc, v >>> 0); break;
+    }
+  }
+}
+function pass(P, out, U = {}, w = W, h = H) {
+  gl.useProgram(P.p); gl.bindFramebuffer(gl.FRAMEBUFFER, out ? fbo(Array.isArray(out) ? out : [out]) : null);
+  gl.viewport(0, 0, w, h); uniforms(P, U); gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+// ------------------------------------------------------------------ shaders --
+const GRAIN = prog(`
+layout(location=0) out vec4 o0;
+// crystal-scale structure of the patina: grains, crystal clusters, their boundaries
+void main(){
+  vec2 p = plate();
+  float g1 = vn(p / 0.62, uSeed + 1u) * 0.55 + vn(p / 1.35, uSeed + 2u) * 0.45;
+  vec2 q = p / 3.1; ivec2 i = ivec2(floor(q)); float f1 = 9.0, f2 = 9.0, cv = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    ivec2 c = i + ivec2(x, y); vec3 h = hc(c, uSeed + 3u); vec2 d = vec2(c) + h.xy - q; float dd = dot(d, d);
+    if (dd < f1) { f2 = f1; f1 = dd; cv = h.z; } else if (dd < f2) f2 = dd; }
+  float ce = sqrt(f2) - sqrt(f1);
+  float gm = vn(p / 7.0, uSeed + 4u) * 0.5 + vn(p / 17.0, uSeed + 5u) * 0.5;
+  o0 = vec4(g1, cv, ce, gm);
+}`);
+
+// decades of weather: each event is a rain or dew day; drops wet the plate, linger, dry with a salt ring
+const WEATHER = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uAcc, uGrain; uniform int uE0, uNE; uniform float uRunFrac;
+void main(){
+  vec2 p = plate(); vec4 acc = texelFetch(uAcc, PX(), 0); vec4 G = texelFetch(uGrain, PX(), 0);
+  for (int k = 0; k < uNE; k++) {
+    uint e = uint(uE0 + k); vec3 eh = hash3(uvec3(e, uSeed, 77u));
+    float s = mix(4.0, 90.0, eh.x * eh.x * eh.x);
+    float dens = mix(0.2, 0.85, eh.y);
+    bool run = eh.z < uRunFrac;
+    vec2 q = p / s + vec2(eh.y, eh.z) * 37.0; ivec2 ci = ivec2(floor(q));
+    float wet = 0.0, ring = 0.0;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      ivec2 c = ci + ivec2(x, y); vec3 h = hc(c, e * 7919u + uSeed); if (h.z > dens) continue;
+      vec3 h2 = hc(c, e * 104729u + uSeed + 9u);
+      vec2 d = q - (vec2(c) + h.xy); float r = mix(0.22, 0.62, h2.x);
+      if (run) { float L = 0.5 + h2.y * 4.0; float t = clamp(-d.y / L, 0.0, 1.0); d.y += t * L; r *= mix(1.0, 0.35, t); d.x += 0.08 * sin(t * 9.0 + h2.z * 6.0) * t; }
+      float dist = length(d) / r + 0.22 * (G.w - 0.5) + 0.08 * (G.x - 0.5) * (8.0 / s);
+      float w = smoothstep(1.0, 0.93, dist);
+      wet = max(wet, w * (0.55 + 0.45 * (1.0 - dist * dist)));
+      ring = max(ring, exp(-pow((dist - 0.965) / 0.03, 2.0)) * h2.z);
+    }
+    acc.x += wet; acc.y += ring; acc.z += run ? wet : 0.0; acc.w += eh.x > 0.75 ? wet : 0.0;
+  }
+  o0 = acc;
+}`);
+
+// iron grains, mineral spots and the sources of runs land as seeds for the growth
+const SPLAT_VS = `#version 300 es
+layout(location=0) in vec4 aP; layout(location=1) in vec4 aK;
+uniform vec2 uRes; uniform float uPPU;
+out vec2 vQ; flat out vec4 vP; flat out vec4 vK;
+const vec2 CR[6] = vec2[6](vec2(-1,-1), vec2(1,-1), vec2(1,1), vec2(-1,-1), vec2(1,1), vec2(-1,1));
+void main(){ vec2 c = CR[gl_VertexID]; float ext = max(aP.z, aK.y) * 1.7 + 2.5 / uPPU; vec2 pos = aP.xy + c * ext;
+  vQ = c * ext; vP = aP; vK = aK; gl_Position = vec4(pos * uPPU / uRes * 2.0 - 1.0, 0.0, 1.0); }`;
+// ---- growth. Crust layers and rust spread outward from nuclei through the plate's own grain:
+// each pixel keeps the budget left on the cheapest path from any nucleus (first-passage growth).
+const COST_A = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uGrain, uAcc; uniform float uNorm;
+void main(){
+  vec2 p = plate(); vec4 G = texelFetch(uGrain, PX(), 0); vec4 A = texelFetch(uAcc, PX(), 0) / uNorm;
+  vec4 c;
+  for (int L = 0; L < 4; L++) {
+    uint s = uSeed + uint(L) * 131u;
+    float f = vn(p / 0.75, s) * 0.5 + vn(p / 1.7, s + 1u) * 0.3 + vn(p / 4.0, s + 2u) * 0.2;
+    float m = vn(p / 9.0, s + 3u) * 0.45 + vn(p / 24.0, s + 4u) * 0.35 + vn(p / 64.0, s + 5u) * 0.2;
+    float wet = clamp(A.x, 0.0, 3.0);
+    c[L] = exp(2.4 * (f - 0.5) + 3.2 * (m - 0.5) - 0.8 * (wet - 1.0) * (L == 3 ? -1.0 : 1.0));
+  }
+  o0 = c / uPPU;
+}`);
+const SEED_A = prog(`
+layout(location=0) out vec4 o0;
+uniform vec4 uCell, uProb, uBud, uClus;
+void main(){
+  vec2 p = plate(); vec4 B = vec4(-1e4);
+  for (int L = 0; L < 4; L++) {
+    float s = uCell[L]; ivec2 ci = ivec2(floor(p / s));
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      ivec2 c = ci + ivec2(x, y); vec3 h = hc(c, uSeed + uint(L) * 977u + 5u);
+      vec3 h2 = hc(c, uSeed + uint(L) * 977u + 6u);
+      vec2 pos = (vec2(c) + h.xy) * s;
+      // crystals nucleate in colonies: the chance of a nucleus follows where the layer is already taking hold
+      float col = vn(pos / uClus[L], uSeed + uint(L) * 31u + 7u) * 0.65 + vn(pos / (uClus[L] * 0.37), uSeed + uint(L) * 31u + 8u) * 0.35;
+      if (h.z > uProb[L] * smoothstep(0.3, 0.72, col)) continue;
+      if (all(equal(ivec2(floor(pos * uPPU)), PX()))) B[L] = max(B[L], uBud[L] * s * pow(h2.x, 1.8));
+    }
+  }
+  o0 = B;
+}`);
+const GROW = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uB, uCost;
+void main(){
+  ivec2 q = PX(); ivec2 M = ivec2(uRes) - 1; vec4 b = texelFetch(uB, q, 0); vec4 c = texelFetch(uCost, q, 0);
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { if (x == 0 && y == 0) continue;
+    float d = (x != 0 && y != 0) ? 1.41421 : 1.0;
+    b = max(b, texelFetch(uB, clamp(q + ivec2(x, y), ivec2(0), M), 0) - c * d); }
+  o0 = b;
+}`);
+// rust and mineral growth carry an attribute of the winning source (gold / whiteness)
+const COST_S = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uGrain;
+void main(){ vec2 p = plate(); vec4 G = texelFetch(uGrain, PX(), 0);
+  float f = vn(p / 0.55, uSeed + 41u) * 0.36 + vn(p / 1.3, uSeed + 42u) * 0.26 + vn(p / 3.6, uSeed + 45u) * 0.38;
+  float ci = exp(3.0 * (f - 0.5) + 0.7 * (G.z - 0.25));
+  float f2 = vn(p / 0.9, uSeed + 43u) * 0.6 + vn(p / 2.5, uSeed + 44u) * 0.4;
+  float cm = exp(2.6 * (f2 - 0.5));
+  o0 = vec4(ci, 0.0, cm, 0.0) / uPPU; }`);
+const GROW_S = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uB, uCost; uniform vec4 uDir; // cost multipliers: from above straight, from above diagonal, sideways, from below
+void main(){
+  ivec2 q = PX(); ivec2 M = ivec2(uRes) - 1; vec4 b = texelFetch(uB, q, 0); vec4 c = texelFetch(uCost, q, 0);
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { if (x == 0 && y == 0) continue;
+    float d = (x != 0 && y != 0) ? 1.41421 : 1.0; vec4 n = texelFetch(uB, clamp(q + ivec2(x, y), ivec2(0), M), 0);
+    d *= y == 1 ? (x == 0 ? uDir.x : uDir.y) : y == 0 ? uDir.z : uDir.w;
+    if (n.x - c.x * d > b.x) { b.x = n.x - c.x * d; b.y = n.y; }
+    if (n.z - c.z * d > b.z) { b.z = n.z - c.z * d; b.w = n.w; } }
+  o0 = b;
+}`);
+// where the big crusts sit, to spread their stain into the patina
+const BIGMASK = prog(`
+layout(location=0) out vec4 o0; uniform sampler2D uS;
+void main(){ vec4 Sp = texelFetch(uS, PX(), 0); o0 = vec4(smoothstep(0.0, 2.0, Sp.x) * smoothstep(4.0, 9.0, floor(Sp.y) * 0.25), 0, 0, 1); }`);
+const MATERIAL_A = prog(`
+layout(location=0) out vec4 oAlb; layout(location=1) out vec4 oH;
+uniform sampler2D uGrain, uAcc, uB, uS, uRun, uHalo; uniform float uNorm, uAge, uToneAmt; uniform vec2 uToneDir;
+uniform vec3 uPatA, uPatB, uChalk, uUnder, uOrange, uGold, uYB, uOxide, uAqua, uWhite, uRed;
+// a crust thins out at its edge and breaks up into the grain instead of ending on a line
+float cover(float b, float n, float reach){ return smoothstep(-0.5, 0.5, (b + reach * (n - 0.5)) * uPPU); }
+void main(){
+  ivec2 q = PX(); vec2 uv = gl_FragCoord.xy / uRes; vec2 p = plate();
+  vec4 G = texelFetch(uGrain, q, 0), A = texelFetch(uAcc, q, 0) / uNorm, B = texelFetch(uB, q, 0), Sp = texelFetch(uS, q, 0), Rn = texelFetch(uRun, q, 0);
+  float fine = vn(p / 0.6, uSeed + 61u), fine2 = vn(p / 1.4, uSeed + 62u);
+  // a deep crust over the metal, then four younger crusts laid down over the decades
+  float wet = A.x + 0.3 * (G.w - 0.5);
+  float thin = smoothstep(0.3, 0.12, fine * 0.6 + fine2 * 0.4 + 0.2 * (A.x - 1.0));
+  vec3 base = mix(uPatB * 0.86, uPatA * 0.8, 0.25) * (0.84 + 0.32 * fine2);
+  vec3 col = mix(base, uUnder * (0.8 + 0.4 * fine), thin * 0.7);
+  vec3 c0 = mix(uPatB, uPatA, 0.3), c1 = mix(uPatB, uPatA, 0.62), c2 = mix(uPatA, uChalk, 0.18), c3 = uChalk;
+  float n0 = vn(p / 0.8, uSeed + 71u) * 0.6 + vn(p / 2.1, uSeed + 72u) * 0.4, n1 = vn(p / 0.8, uSeed + 73u) * 0.6 + vn(p / 2.1, uSeed + 74u) * 0.4;
+  float n2 = vn(p / 0.7, uSeed + 75u) * 0.6 + vn(p / 1.8, uSeed + 76u) * 0.4, n3 = vn(p / 1.1, uSeed + 77u);
+  float k0 = cover(B.x, n0, 4.0), k1 = cover(B.y, n1, 3.6), k2 = cover(B.z, n2, 3.0), k3 = cover(B.w, n3, 3.0);
+  float t0 = clamp(B.x / 8.0, 0.0, 1.0), t1 = clamp(B.y / 5.0, 0.0, 1.0), t2 = clamp(B.z / 3.0, 0.0, 1.0);
+  col = mix(col, c0 * (0.84 + 0.32 * fine) * (0.95 + 0.07 * t0), k0 * 0.85);
+  col = mix(col, c1 * (0.85 + 0.3 * fine2) * (0.95 + 0.07 * t1), k1 * 0.5);
+  col = mix(col, c2 * (0.86 + 0.28 * fine) * (0.95 + 0.07 * t2), k2 * 0.26);
+  col = mix(col, c3 * (0.9 + 0.2 * fine2), k3 * 0.15);
+  // crystal grain: light and dark flecks of individual crystals all over
+  float cr = vn(p / 0.9, uSeed + 81u) * 0.7 + vn(p / 0.45, uSeed + 82u) * 0.3;
+  col *= 1.0 + 0.13 * smoothstep(0.6, 0.8, cr) - 0.16 * smoothstep(0.38, 0.2, cr);
+  // where water lingered the crust is deeper and darker; where it ran off, chalkier
+  col *= 1.0 - 0.16 * smoothstep(0.8, 1.6, wet);
+  col = mix(col, col * vec3(1.03, 1.05, 1.02) + 0.01, smoothstep(1.0, 0.45, wet) * 0.6);
+  float h = 0.07 * k0 * (0.5 + t0) + 0.08 * k1 * (0.5 + t1) + 0.08 * k2 * (0.5 + t2) + 0.04 * k3 + 0.05 * fine - 0.05 * thin;
+  float salt = smoothstep(0.5, 2.5, A.y * 18.0 + 0.6 * (fine - 0.5)); col = mix(col, uChalk, salt * 0.18);
+  float tg = dot(uv - 0.5, uToneDir) + 0.5; col *= mix(1.0, 0.55, uToneAmt * smoothstep(0.0, 1.0, tg));
+  // mineral: lighter, younger patina, soft-edged and translucent
+  float mn = smoothstep(-1.4, 1.2, Sp.z + 0.8 * (fine - 0.5));
+  vec3 mc = mix(uAqua, uWhite, Sp.w * 0.7) * (0.88 + 0.24 * fine2);
+  col = mix(col, mc, mn * mix(0.55, 0.72, Sp.w));
+  h += mn * 0.05;
+  // iron water that ran down the plate from the big grains: a translucent brown streak that fans out and fades,
+  // combed into rills by the water's path
+  float rill = vn(vec2(p.x / 0.45, p.y / 9.0), uSeed + 97u) * 0.7 + vn(vec2(p.x / 1.6, p.y / 20.0), uSeed + 98u) * 0.3;
+  // the trickle spreads sideways in a thin film, so the streak is soft-edged rather than a column
+  float rs = 0.0, rw = 0.0; for (int k = -6; k <= 6; k++) { float w = exp(-float(k * k) / 18.0); rs += w * max(texelFetch(uRun, clamp(q + ivec2(int(round(float(k) * 0.55 * uPPU)), 0), ivec2(0), ivec2(uRes) - 1), 0).x, 0.0); rw += w; }
+  rs /= rw;
+  float rv = rs * smoothstep(0.15, 0.75, rill) * 2.2 + 0.6 * (fine - 0.5);
+  float run = smoothstep(0.0, 3.0, rv) * (0.45 + 0.55 * smoothstep(3.0, 14.0, rv));
+  col *= mix(vec3(1.0), vec3(1.22, 0.82, 0.52), run * 0.55);
+  col = mix(col, uYB * (0.75 + 0.5 * fine2), run * smoothstep(5.0, 16.0, rv) * 0.4);
+  h += run * 0.03;
+  // rust. Outside the grain, a stain seeped into the patina along its grain; inside, a crust that grows darker
+  // and lumpier the thicker it is, zoned by its own uneven depth rather than by distance from a centre
+  float size = floor(Sp.y) * 0.25, gf = fract(Sp.y), e = Sp.x;
+  float mid = vn(p / 4.0, uSeed + 95u) * 0.45 + vn(p / 1.8, uSeed + 101u) * 0.3 + vn(p / 0.9, uSeed + 96u) * 0.25;
+  float big = smoothstep(1.5, 5.0, size);
+  float ox = vn(p / 14.0, uSeed + 99u) * 0.7 + vn(p / 5.0, uSeed + 100u) * 0.3;
+  float halo = e < 0.0 ? exp(e / (0.3 + 0.5 * size)) : 1.0;
+  col *= mix(vec3(1.0), vec3(1.16, 0.8, 0.5), halo * smoothstep(0.5, 3.0, size) * (0.4 + 0.6 * mid) * 0.85);
+  float hb = texelFetch(uHalo, q, 0).r;
+  float hs = smoothstep(0.01, 0.22, hb + 0.06 * (fine2 - 0.5)) * (0.4 + 0.6 * mid);
+  col = mix(col, col * vec3(1.5, 0.74, 0.36) + uYB * 0.05, hs * 0.8);
+  float body = smoothstep(-0.4, 0.6, e * uPPU + 0.8 * (fine - 0.5));
+  float dense = mix(0.5, 1.0, smoothstep(0.2, 1.4, e));   // the tiniest grains are half stain
+  float dp = e * mix(0.55, 1.5, ox) + (1.0 + 0.5 * min(size, 10.0)) * (mid - 0.5) * 1.8 + 0.35 * (fine - 0.5);
+  vec3 orng = gf < 0.45 ? mix(uYB, uOrange, gf / 0.45) : mix(uOrange, uGold, (gf - 0.45) * 1.1), ochre = mix(orng, uYB, 0.3) * 0.94;
+  vec3 rc = mix(ochre, orng, smoothstep(0.05, 0.6, dp));
+  rc = mix(rc, mix(uYB, uRed, 0.6), smoothstep(0.7, 2.0, dp) * 0.75);
+  // thick crust turns to black-brown oxide; where flakes have broken away the fresh orange shows again
+  float flake = smoothstep(0.63, 0.69, vn(p / 3.2, uSeed + 91u) * 0.65 + vn(p / 1.2, uSeed + 92u) * 0.35);
+  float mot = vn(p / 4.5, uSeed + 102u) * 0.6 + vn(p / 1.6, uSeed + 103u) * 0.4;
+  float core = smoothstep(1.6, 3.4, dp) * smoothstep(0.8, 2.5, size);
+  vec3 oxc = mix(uOxide * 0.8, mix(uRed, uOxide, 0.45), smoothstep(0.35, 0.75, mot)) * (0.8 + 0.4 * fine2);
+  rc = mix(rc, oxc, core * (1.0 - flake * 0.85));
+  rc = mix(rc, mix(orng, ochre, fine) * 1.05, core * flake * 0.8);
+  rc *= 0.86 + 0.28 * fine;
+  float blis = vn(p / 2.6, uSeed + 104u) * 0.7 + vn(p / 1.1, uSeed + 105u) * 0.3;
+  rc *= mix(1.0, 0.72 + 0.56 * smoothstep(0.3, 0.8, blis), big);
+  float tiny = 1.0 - smoothstep(0.35, 1.3, size);
+  rc = mix(rc, mix(uYB, uRed, 0.35) * (0.8 + 0.4 * fine), tiny * 0.7);
+  vec3 tint = col * vec3(1.42, 1.0, 0.5);
+  col = mix(col, mix(tint, rc, dense * 0.9 + 0.1), body * mix(0.55, 1.0, dense) * (1.0 - 0.3 * tiny));
+  // blistered, lumpy relief
+  float bump = vn(p / 1.3, uSeed + 93u) * 0.55 + vn(p / 0.5, uSeed + 94u) * 0.45;
+  h += body * dense * (0.1 + 0.4 * sqrt(clamp(e, 0.0, 12.0)) * (0.55 + 0.9 * bump) + 0.6 * big * smoothstep(0.45, 0.85, blis)) - core * flake * 0.35;
+  float sheen = body * dense * (0.3 + 0.7 * big) * (1.0 - core * 0.5);
+  oAlb = vec4(col, sheen); oH = vec4(h, 0, 0, 1);
+}`);
+
+const BLUR = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uT; uniform vec2 uDir; uniform float uSig;
+void main(){ ivec2 q = PX(); ivec2 M = ivec2(uRes) - 1; int n = int(ceil(uSig * 3.0)); vec4 s = vec4(0); float ws = 0.0;
+  for (int i = -n; i <= n; i++) { float w = exp(-0.5 * float(i * i) / (uSig * uSig)); s += w * texelFetch(uT, clamp(q + ivec2(uDir) * i, ivec2(0), M), 0); ws += w; }
+  o0 = s / ws; }`);
+
+const SPLAT_SEED = prog(`
+in vec2 vQ; flat in vec4 vP; flat in vec4 vK;
+layout(location=0) out vec4 o0;
+void main(){ if (length(vQ) > max(vK.x > 0.0 && vK.z > 0.5 ? vK.y : 0.0, 0.75 / uPPU)) discard;
+  // iron budget = grain radius; its attribute packs size (integer quarters) and goldness (fraction)
+  float att = floor(vP.z * 4.0) + clamp(vK.y / max(vK.x, 1e-3), 0.0, 0.99);
+  o0 = vec4(vK.x > 0.0 ? vP.z : -1e4, att, vK.z > 0.0 ? vP.z : -1e4, vK.w); }`, SPLAT_VS);
+
+// overcast light on the plate
+const SHADE = prog(`
+layout(location=0) out vec4 o0;
+uniform sampler2D uAlb, uH, uHB; uniform vec3 uIllum;
+void main(){
+  ivec2 q = PX(); ivec2 M = ivec2(uRes) - 1; vec2 uv = gl_FragCoord.xy / uRes;
+  float hx = texelFetch(uH, clamp(q + ivec2(1,0), ivec2(0), M), 0).r - texelFetch(uH, clamp(q - ivec2(1,0), ivec2(0), M), 0).r;
+  float hy = texelFetch(uH, clamp(q + ivec2(0,1), ivec2(0), M), 0).r - texelFetch(uH, clamp(q - ivec2(0,1), ivec2(0), M), 0).r;
+  vec3 n = normalize(vec3(-hx * uPPU * 0.5 * 1.6, -hy * uPPU * 0.5 * 1.6, 1.0));
+  vec3 L = normalize(vec3(0.12, 0.6, 0.79));
+  float E = 0.6 + 0.4 * dot(n, L);
+  float cav = texelFetch(uHB, q, 0).r - texelFetch(uH, q, 0).r;
+  float ao = exp(-max(cav, 0.0) * 2.2) * (1.0 + 0.25 * max(-cav, 0.0));
+  vec2 c = uv - 0.5; float U = 1.0 + uIllum.x * c.x * 2.0 + uIllum.y * c.y * 2.0 + uIllum.z * dot(c, c) * 4.0;
+  vec4 al = texelFetch(uAlb, q, 0);
+  vec3 Hh = normalize(L + vec3(0, 0, 1)); float sp = al.a * 0.08 * pow(max(dot(n, Hh), 0.0), 14.0);
+  o0 = vec4((al.rgb * E * ao + sp * vec3(0.95, 0.97, 1.0)) * U, 1.0);
+}`);
+
+const LOGL = prog(`
+layout(location=0) out vec4 o0; uniform sampler2D uT;
+void main(){ vec3 c = texture(uT, (gl_FragCoord.xy) / uRes).rgb; o0 = vec4(log2(dot(c, vec3(0.2126, 0.7152, 0.0722)) + 1e-4), 0, 0, 1); }`);
+const TOP = prog(`layout(location=0) out vec4 o0; uniform sampler2D uT; uniform float uLod; void main(){ o0 = textureLod(uT, vec2(0.5), uLod); }`);
+
+const TONE = prog(`
+layout(location=0) out vec4 o0; uniform sampler2D uT; uniform float uExp;
+void main(){ vec3 c = texelFetch(uT, PX(), 0).rgb; o0 = vec4(log2(max(c * uExp, 1e-5)), 1.0); }`);
+
+// the print: grain in the emulsion, a soft toe and shoulder, faded colour, then development
+const PRINT = prog(`
+out vec4 o0;
+uniform sampler2D uTone; uniform float uLod, uDev; uniform uint uFrame;
+vec4 cubic(float v){ vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v; vec4 s = n * n * n; float x = s.x, y = s.y - 4.0 * s.x, z = s.z - 4.0 * s.y + 6.0 * s.x; return vec4(x, y, z, 6.0 - x - y - z) / 6.0; }
+vec3 bspline(float lod){
+  vec2 sz = vec2(textureSize(uTone, int(lod))); vec2 t = gl_FragCoord.xy / uRes * sz - 0.5; vec2 f = fract(t); t -= f;
+  vec4 xc = cubic(f.x), yc = cubic(f.y); vec4 c = t.xxyy + vec2(-0.5, 1.5).xyxy; vec4 s = vec4(xc.xz + xc.yw, yc.xz + yc.yw); vec4 o = (c + vec4(xc.yw, yc.yw) / s) / sz.xxyy;
+  vec3 s0 = textureLod(uTone, o.xz, lod).rgb, s1 = textureLod(uTone, o.yz, lod).rgb, s2 = textureLod(uTone, o.xw, lod).rgb, s3 = textureLod(uTone, o.yw, lod).rgb;
+  float sx = s.x / (s.x + s.y), sy = s.z / (s.z + s.w); return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
+}
+float gn(uvec3 v){ vec3 h = hash3(v); return (h.x + h.y + h.z - 1.5) * 2.0; }
+float coarse(vec2 p, uint s){ return (vn(p / 2.3, s) - 0.5) * 3.4; }
+void main(){
+  vec3 e;
+  if (uLod < 0.01) e = texelFetch(uTone, PX(), 0).rgb;
+  else { float l0 = floor(uLod); e = mix(bspline(l0), bspline(l0 + 1.0), uLod - l0); }
+  // grain, clumped by luminance: coarse and strong in shadows and mid-tones, fine in highlights
+  float L = dot(e, vec3(0.25, 0.6, 0.15));
+  uvec2 pq = uvec2(gl_FragCoord.xy); uint f = uFrame * 747796405u;
+  float shared = gn(uvec3(pq, f)), cs = coarse(gl_FragCoord.xy, f + 3u);
+  vec3 ind = vec3(gn(uvec3(pq, f + 1u)), gn(uvec3(pq, f + 2u)), gn(uvec3(pq.yx, f + 5u)));
+  float cw = smoothstep(0.0, -3.0, L);
+  vec3 g = mix(vec3(shared) * 0.72 + ind * 0.5, vec3(cs) * 0.75 + ind * 0.42, cw);
+  float amp = mix(0.13, 0.055, smoothstep(-3.0, 0.5, L));
+  e += g * amp * vec3(1.0, 0.92, 1.12);
+  // print curve: logistic in log exposure, lifted black, soft shoulder; colour layers slightly offset (cool toe, cream shoulder)
+  vec3 toe = vec3(0.016, 0.019, 0.024), sh = vec3(0.86, 0.82, 0.73);
+  vec3 y = toe + (sh - toe) / (1.0 + exp(-1.0 * (e - vec3(-0.08, 0.0, 0.1))));
+  float Y = dot(y, vec3(0.2126, 0.7152, 0.0722));
+  y = mix(vec3(Y), y, 0.8);
+  // development: density grows from the paper
+  vec3 paper = vec3(0.80, 0.78, 0.72);
+  y = paper * pow(max(y / paper, 1e-4), vec3(uDev));
+  vec3 s = mix(12.92 * y, 1.055 * pow(y, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, y));
+  vec3 dz = hash3(uvec3(pq, f + 9u)) + hash3(uvec3(pq, f + 11u)) - 1.0;
+  o0 = vec4(s + dz / 255.0, 1.0);
+}`);
+
+// ------------------------------------------------------------------ the band --
+function speckles() {
+  const out = [], runs = []; let id = 1, big = 0, sub = false;
+  const nb = S.bandMode === 'two' ? 2 : 1, sparse = S.bandMode === 'sparse';
+  const bands = [];
+  const y0 = R() < 0.62 ? rr(0.6, 0.8) : rr(0.22, 0.4);
+  for (let b = 0; b < nb; b++) {
+    const yc = b === 0 ? y0 : clamp(y0 + (y0 > 0.5 ? -1 : 1) * rr(0.22, 0.36), 0.12, 0.88);
+    bands.push({
+      yc: yc * HU, tilt: rr(-0.07, 0.07), bend: rr(-0.06, 0.06) * HU, sig: (sparse ? rr(0.045, 0.08) : rr(0.028, 0.07)) * HU,
+      w: b === 0 ? 1 : rr(0.18, 0.35), wav: [rr(0, 6.28), rr(0, 6.28), rr(0, 6.28)],
+    });
+  }
+  const yOf = (B, x) => B.yc + B.tilt * (x - WU / 2) + B.bend * (((x / WU) - 0.5) ** 2 * 4 - 0.33);
+  const total = Math.round((sparse ? rr(7000, 11000) : rr(10000, 20000)) * WU / 1600);
+  for (const B of bands) {
+    const n = Math.round(total * B.w / (nb === 2 ? 1.25 : 1));
+    // clusters along the band, weights heavy-tailed, plus a slowly breathing density
+    const cl = []; const nc = Math.round(rr(18, 40) * WU / 1600);
+    for (let i = 0; i < nc; i++) cl.push({ x: rr(-0.05, 1.05) * WU, w: Math.min((1 - R()) ** -1.2, 5), sx: rr(0.025, 0.07) * WU, sy: rr(0.45, 0.9) });
+    const cw = cl.reduce((a, c) => a + c.w, 0);
+    const dens = (x) => { const u = x / WU; return Math.max(0, 0.3 + 0.38 * Math.sin(u * 5.1 + B.wav[0]) + 0.26 * Math.sin(u * 11.3 + B.wav[1]) + 0.15 * Math.sin(u * 23.7 + B.wav[2])); };
+    for (let i = 0; i < n; i++) {
+      let x, y;
+      if (R() < 0.7) { let t = R() * cw, c = cl[0]; for (const C of cl) { if ((t -= C.w) < 0) { c = C; break; } } x = c.x + gauss() * c.sx; y = yOf(B, x) + gauss() * B.sig * c.sy; }
+      else { do { x = R() * WU; } while (R() * 1.2 > dens(x)); const prof = R() < 0.7 ? gauss() : (R() < 0.5 ? -1 : 1) * -Math.log(1 - R()) * 1.6; y = yOf(B, x) + prof * B.sig; }
+      add(x, y, false);
+    }
+  }
+  // a handful of big crusts, where a lump of iron landed in the thick of the band
+  const nbig = Math.max(2, Math.round(rr(2, 7) * S.bold * WU / 1600));
+  for (let i = 0; i < nbig; i++) {
+    // a conglomerate: one lump and the smaller lumps fused around it
+    const B = bands[nb === 2 && R() < 0.3 ? 1 : 0], x = rr(0.04, 0.96) * WU, y = yOf(B, x) + gauss() * B.sig * 0.5, R0 = rr(22, 46) * S.bold, el = rr(0.6, 1.4);
+    big = R0 * rr(0.45, 0.65); add(x, y, false);
+    sub = true; const ns = Math.round(rr(5, 14)), dir = R() * 6.283;
+    for (let k = 0; k < ns; k++) { const a = R() < 0.6 ? dir + gauss() * 0.8 : R() * 6.283, d = R0 * Math.sqrt(R()) * 0.8; big = R0 * rr(0.1, 0.38); add(x + Math.cos(a) * d * el, y + Math.sin(a) * d / el, false); }
+    sub = false;
+  }
+  big = 0;
+  const strays = Math.round(total * rr(0.02, 0.05));
+  for (let i = 0; i < strays; i++) add(R() * WU, R() * HU, true);
+  function size(stray) { const a = sparse ? 1.8 : 2.1; let r = 0.42 * (1 - R()) ** (-1 / a); if (stray) r = Math.min(r, 1.6); return Math.min(r, 8); }
+  function add(x, y, stray) {
+    const t = big ? 1 : R(); const r0 = big || size(stray);
+    if (t < S.aquaFrac) { const r = Math.min(r0 * rr(1.2, 2.4), 6.5); out.push(x, y, r, id++, 0, 0, rr(0.5, 1.0), 0); return; }
+    if (t < S.aquaFrac + S.whiteFrac) { out.push(x, y, Math.min(r0 * 0.7, 1.6), id++, 0, 0, 0, rr(0.6, 1)); return; }
+    const gold = clamp(S.goldBias + rr(-0.35, 0.35), 0, 1), amt = rr(0.45, 1.1) * (1 + 0.12 * r0);
+    out.push(x, y, r0, id++, amt, amt * gold, 0, 0);
+    if (sub) return;
+    if (r0 > 4 && R() < S.runs * clamp((r0 - 4) / 12, 0.05, 0.85)) runs.push([r0, x + gauss() * r0 * 0.2, y - r0 * rr(0.3, 0.6), S.runLen * rr(0.25, 1) * clamp(r0 / 9, 0.4, 1.6) * 0.3, id++, 1, r0 * rr(0.16, 0.32), 1, 0]);
+    if (r0 > 2.2) { // a splash: satellites thrown off along one direction
+      const nsat = Math.round(r0 * rr(0.6, 1.6)), dir = R() * 6.283;
+      for (let k = 0; k < nsat; k++) { const a = dir + gauss() * 0.9, d = r0 * rr(1.1, 3.4); out.push(x + Math.cos(a) * d, y + Math.sin(a) * d, r0 * rr(0.08, 0.3), id++, amt * rr(0.6, 1), amt * gold, 0, 0); }
+    }
+  }
+  // only the heaviest grains bleed far enough to leave a run
+  const rn = runs.sort((a, b) => b[0] - a[0]).slice(0, 3).flatMap((r) => r.slice(1));
+  return { specks: new Float32Array(out), runs: new Float32Array(rn.length ? rn : [0, -1e3, 0, 0, 0, 0, 0, 0]) };
+}
+
+// ------------------------------------------------------------------ build --
+const T = {};
+const tasks = [];
+const NEV = 360, CH = 24;
+
+function finish() {
+  T.rad = tex(W, H); T.radB = tex(W, H); T.radL = tex(W, H);
+  const LV = Math.floor(Math.log2(Math.max(W, H))) + 1;
+  T.tone = tex(W, H, gl.RGBA16F, LV);
+  T.logl = tex(W >> 2, H >> 2, gl.R16F, Math.floor(Math.log2(Math.max(W >> 2, H >> 2))) + 1); T.one = tex(1, 1, gl.RGBA32F);
+  tasks.push(() => { pass(BLUR, T.tmp, { uT: T.h, uDir: [1, 0], uSig: 5 * PPU }); pass(BLUR, T.hb, { uT: T.tmp, uDir: [0, 1], uSig: 5 * PPU }); });
+  tasks.push(() => pass(SHADE, T.rad, { uAlb: T.alb, uH: T.h, uHB: T.hb, uIllum: S.illum }));
+  tasks.push(() => { const s = 0.45 * PPU; pass(BLUR, T.radB, { uT: T.rad, uDir: [1, 0], uSig: s }); pass(BLUR, T.radL, { uT: T.radB, uDir: [0, 1], uSig: s }); });
+  tasks.push(() => {
+    gl.bindTexture(gl.TEXTURE_2D, T.radL); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    pass(LOGL, T.logl, { uT: T.radL }, T.logl.w, T.logl.h);
+    gl.bindTexture(gl.TEXTURE_2D, T.logl); gl.generateMipmap(gl.TEXTURE_2D);
+    pass(TOP, T.one, { uT: T.logl, uLod: 20 }, 1, 1);
+    const px = new Float32Array(4); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, px);
+    // expose so the mean patina lands on the seed's key through the print curve
+    const key = S.key, toe = 0.019, shv = 0.82; const eT = -Math.log((shv - toe) / (key - toe) - 1) / 1.0;
+    T.exp = 2 ** (eT - px[0]);
+    pass(TONE, T.tone, { uT: T.radL, uExp: T.exp });
+    gl.bindTexture(gl.TEXTURE_2D, T.tone); gl.generateMipmap(gl.TEXTURE_2D);
+  });
+}
+
+function weather() {
+  T.grain = tex(W, H); T.accA = tex(W, H, gl.RGBA32F); T.accB = tex(W, H, gl.RGBA32F);
+  tasks.push(() => pass(GRAIN, T.grain));
+  tasks.push(() => { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo([T.accA])); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); });
+  for (let e = 0; e < NEV; e += CH) tasks.push(() => { pass(WEATHER, T.accB, { uAcc: T.accA, uGrain: T.grain, uE0: e, uNE: CH, uRunFrac: S.runFrac }); [T.accA, T.accB] = [T.accB, T.accA]; });
+}
+function instanced(P, target, U, data, blendEq) {
+  const n = data.length / 8;
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(0, 1);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(1, 1);
+  gl.useProgram(P.p); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo([target])); gl.viewport(0, 0, W, H);
+  uniforms(P, U); gl.enable(gl.BLEND); gl.blendEquation(blendEq); gl.blendFunc(gl.ONE, gl.ONE); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
+  gl.disable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.bindVertexArray(null);
+}
+function build() {
+  weather();
+  T.cost = tex(W, H); T.bA = tex(W, H, gl.RGBA32F); T.bB = tex(W, H, gl.RGBA32F);
+  T.costS = tex(W, H); T.sA = tex(W, H, gl.RGBA32F); T.sB = tex(W, H, gl.RGBA32F); T.rA = tex(W, H, gl.RGBA32F); T.rB = tex(W, H, gl.RGBA32F);
+  T.alb = tex(W, H); T.h = tex(W, H, gl.R16F); T.hb = tex(W, H, gl.R16F); T.tmp = tex(W, H, gl.R16F);
+  const cell = [7, 6, 5, 8], prob = [1, 0.95, 0.9, 0.4], bud = [1.1, 0.95, 0.8, 0.6], clus = [46, 30, 20, 36];
+  tasks.push(() => { pass(COST_A, T.cost, { uGrain: T.grain, uAcc: T.accA, uNorm: NEV * 0.42 }); pass(SEED_A, T.bA, { uCell: cell, uProb: prob, uBud: bud, uClus: clus }); });
+  const nG = Math.ceil(60 * PPU);
+  for (let i = 0; i < nG; i += 8) tasks.push(() => { for (let k = 0; k < 8; k++) { pass(GROW, T.bB, { uB: T.bA, uCost: T.cost }); [T.bA, T.bB] = [T.bB, T.bA]; } });
+  tasks.push(() => {
+    pass(COST_S, T.costS, { uGrain: T.grain });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo([T.sA])); gl.clearColor(-1e4, 0, -1e4, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.clearColor(0, 0, 0, 0);
+    // RGBA32F can't MAX-blend without EXT_float_blend: seed into a 16F target, then copy
+    T.seed16 = tex(W, H); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo([T.seed16])); gl.clearColor(-1e4, 0, -1e4, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.clearColor(0, 0, 0, 0);
+    const sp = speckles(); S.nRuns = sp.runs.length / 8;
+    instanced(SPLAT_SEED, T.seed16, {}, sp.specks, gl.MAX);
+    pass(BLUR, T.sA, { uT: T.seed16, uDir: [1, 0], uSig: 0.001 });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo([T.seed16])); gl.clearColor(-1e4, 0, -1e4, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.clearColor(0, 0, 0, 0);
+    instanced(SPLAT_SEED, T.seed16, {}, sp.runs, gl.MAX);
+    pass(BLUR, T.rA, { uT: T.seed16, uDir: [1, 0], uSig: 0.001 });
+  });
+  const nS = Math.ceil(72 * PPU), nR = Math.ceil(S.runs > 0 ? 1.6 * S.runLen * PPU : 0);
+  for (let i = 0; i < nS; i += 8) tasks.push(() => { for (let k = 0; k < 8; k++) { pass(GROW_S, T.sB, { uB: T.sA, uCost: T.costS, uDir: [1, 1, 1, 1] }); [T.sA, T.sB] = [T.sB, T.sA]; } });
+  for (let i = 0; i < nR; i += 10) tasks.push(() => { for (let k = 0; k < 10; k++) { pass(GROW_S, T.rB, { uB: T.rA, uCost: T.costS, uDir: [0.3, 12, 40, 400] }); [T.rA, T.rB] = [T.rB, T.rA]; } });
+  tasks.push(() => { T.hm = tex(W, H, gl.R16F); pass(BIGMASK, T.hm, { uS: T.sA }); pass(BLUR, T.tmp, { uT: T.hm, uDir: [1, 0], uSig: 13 * PPU }); pass(BLUR, T.hm, { uT: T.tmp, uDir: [0, 1], uSig: 13 * PPU }); });
+  tasks.push(() => pass(MATERIAL_A, [T.alb, T.h], {
+    uGrain: T.grain, uAcc: T.accA, uB: T.bA, uS: T.sA, uRun: T.rA, uHalo: T.hm, uNorm: NEV * 0.42, uAge: S.age, uToneAmt: S.toneAmt, uToneDir: S.toneDir,
+    uPatA: S.patA, uPatB: S.patB, uChalk: S.chalk, uUnder: S.under, uOrange: S.orange, uGold: S.gold, uYB: S.ybrown, uOxide: S.oxide, uAqua: S.aqua, uWhite: S.white, uRed: S.red,
+  }));
+}
+
+build();
+finish();
+
+// ------------------------------------------------------------------ run --
+const note = document.getElementById('note');
+note.textContent = `${S.metal} · ${S.years} years of weather · ${SEED}`;
+const st = window.__rust = { seed: SEED, S, done: false, frames: 0, t0: 0, buildMs: 0, dev: FAST ? 1 : 0, lod: 0 };
+let frame = 0, tDone = 0;
+const t0 = performance.now();
+function draw(lod, dev) { pass(PRINT, null, { uTone: T.tone, uLod: lod, uDev: dev, uFrame: frame++ }); }
+let last = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (tasks.length) {
+    const tb = performance.now();
+    while (tasks.length && performance.now() - tb < 12) tasks.shift()();
+    if (tasks.length) { gl.flush(); return; }
+    st.buildMs = performance.now() - t0; tDone = now;
+    if (FAST) { draw(0, 1); st.done = true; note.style.transition = 'none'; note.style.opacity = 0.62; }
+    return;
+  }
+  if (now - last < 1000 / 24 - 2) return; last = now;
+  if (FAST) { draw(0, 1); st.frames++; return; }
+  // development: blank paper, then soft colour, then the band, then detail
+  const t = (now - tDone) / 1000;
+  const ss = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+  const dev = ss(0, 5.5, t) ** 0.8;
+  const lod = 7.5 * (1 - ss(0.5, 10, t)) ** 1.5;
+  st.dev = dev; st.lod = lod;
+  draw(lod, dev); st.frames++;
+  if (t > 9 && !st.done) { st.done = true; note.style.opacity = 0.62; }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
